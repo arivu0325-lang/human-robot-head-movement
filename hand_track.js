@@ -95,23 +95,28 @@ const dom = {
 // Web Serial Communication (Arduino / ESP32 at 9600 Baud)
 // ============================================================================
 
-async function autoReconnectSerial() {
+async function autoReconnectSerial(retryCount = 0) {
   if (!("serial" in navigator)) return;
   try {
     const ports = await navigator.serial.getPorts();
     if (ports.length > 0) {
-      console.log('[SERIAL] Previously paired port detected. Auto-connecting...');
+      console.log(`[SERIAL] Paired USB port detected (attempt ${retryCount + 1}). Auto-connecting...`);
       state.serialPort = ports[0];
       await state.serialPort.open({ baudRate: state.baudRate });
       state.isConnected = true;
       updateConnectionUI(true);
+      console.log('[SERIAL] Connected to Arduino Uno successfully!');
       setTimeout(() => {
         sendSerialData('HOME\n');
-      }, 1000);
+      }, 600);
       startSerialRead();
+      return;
     }
   } catch (err) {
-    console.warn('[SERIAL AUTO-CONNECT]', err);
+    console.warn(`[SERIAL AUTO-CONNECT] Attempt ${retryCount + 1}:`, err.message);
+    if (retryCount < 3) {
+      setTimeout(() => autoReconnectSerial(retryCount + 1), 400);
+    }
   }
 }
 
@@ -951,6 +956,19 @@ window.addEventListener('DOMContentLoaded', () => {
         state.hand.active = false;
       }
       startHandTracking();
+    });
+  }
+
+  // Return cleanly to Cockpit, closing port so index.html can open it immediately
+  const btnBack = document.querySelector('.btn-back-cockpit');
+  if (btnBack) {
+    btnBack.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        if (state.serialReader) await state.serialReader.cancel();
+        if (state.serialPort) await state.serialPort.close();
+      } catch (err) {}
+      window.location.href = 'index.html';
     });
   }
 

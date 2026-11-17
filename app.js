@@ -2541,9 +2541,9 @@ function handleVoiceCommand(rawText) {
 
   // 5. Hand Tracking Voice Commands
   if (text.includes('hand track') || text.includes('hand control') || text.includes('follow my hand') || text.includes('track hand') || text.includes('start hand')) {
-    startHandTracking();
-    speakVoiceFeedback("Hand tracking activated");
-    log('[VOICE COMMAND] ✋ Hand tracking started', 'rx');
+    speakVoiceFeedback("Opening hand tracking studio");
+    log('[VOICE COMMAND] ✋ Opening Hand Tracking Studio...', 'rx');
+    navigateToHandTrackStudio();
     return;
   }
 
@@ -2586,12 +2586,33 @@ const handTrack = {
   offCtx: null
 };
 
+async function navigateToHandTrackStudio() {
+  log('[NAVIGATION] ✋ Opening Hand Tracking Studio (2-Column Vision Control)...', 'info');
+  // Cleanly close serial reader & port if open so hand_track.html can immediately connect
+  if (state.serialReader) {
+    try { await state.serialReader.cancel(); } catch (e) {}
+    state.serialReader = null;
+  }
+  if (state.serialPort) {
+    try { await state.serialPort.close(); } catch (e) {}
+    state.serialPort = null;
+    state.isConnected = false;
+  }
+  window.location.href = 'hand_track.html';
+}
+
 function initHandTracking() {
   if (dom.btnHeaderHand) {
-    dom.btnHeaderHand.addEventListener('click', toggleHandTracking);
+    dom.btnHeaderHand.addEventListener('click', (e) => {
+      e.preventDefault();
+      navigateToHandTrackStudio();
+    });
   }
   if (dom.btnPresetHand) {
-    dom.btnPresetHand.addEventListener('click', toggleHandTracking);
+    dom.btnPresetHand.addEventListener('click', (e) => {
+      e.preventDefault();
+      navigateToHandTrackStudio();
+    });
   }
   if (dom.btnCloseHandHud) {
     dom.btnCloseHandHud.addEventListener('click', stopHandTracking);
