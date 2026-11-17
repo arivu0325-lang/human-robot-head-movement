@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoboHead Control System | Mission Control UI</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Google Fonts for futuristic cockpit look -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Three.js for 3D Robot Head Visualizer -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- MediaPipe Hands & Camera Utils for Real-Time Gesture Control -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div class="hud-container">
+    <!-- Top Status Header -->
+    <header class="hud-header">
+      <div class="header-left">
+        <div class="logo-badge">
+          <span class="pulse-ring"></span>
+          <span class="logo-icon">🤖</span>
+        </div>
+        <div class="title-group">
+          <h1>ROBO-HEAD // GIMBAL CONTROLLER</h1>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="connection-bar">
+          <div class="status-indicator" id="connIndicator">
+            <span class="status-dot"></span>
+            <span class="status-text" id="connStatusText">DISCONNECTED</span>
+          </div>
+          <button id="btnQuickConnect" class="btn btn-connect">
+            <span class="btn-icon">⚡</span> CONNECT
+          </button>
+          <button id="btnHeaderMic" class="btn btn-header-mic" title="Toggle Voice Interaction (Mic)">
+            🎙️ VOICE
+          </button>
+          <button id="btnHeaderHand" class="btn btn-header-hand" title="Toggle Real-Time Hand Tracking (Webcam)">
+            ✋ HAND TRACK
+          </button>
+          <button id="btnOpenLogs" class="btn btn-icon-only" title="Open Telemetry Logs">
+            📜
+          </button>
+          <button id="btnOpenSettings" class="btn btn-icon-only" title="Connection Settings">
+            ⚙️
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace Grid -->
+    <main class="hud-main">
+      <!-- Left Column: Primary Movement D-Pad & Key Bindings -->
+      <section class="hud-panel left-panel">
+        <div class="panel-header">
+          <h2>DIRECTIONAL CONTROL</h2>
+        </div>
+
+        <div class="dpad-wrapper">
+          <div class="dpad-container">
+            <!-- UP Button -->
+            <button id="btnUp" class="dpad-btn btn-up" data-dir="UP" title="Look Up (Arrow Up / W)">
+              <div class="key-hint">W / ↑</div>
+              <svg class="dpad-arrow" viewBox="0 0 24 24"><path d="M12 4l-8 8h6v8h4v-8h6z"/></svg>
+              <span class="btn-label">LOOK UP</span>
+            </button>
+
+            <!-- LEFT Button -->
+            <button id="btnLeft" class="dpad-btn btn-left" data-dir="LEFT" title="Look Left (Arrow Left / A)">
+              <div class="key-hint">A / ←</div>
+              <svg class="dpad-arrow" viewBox="0 0 24 24"><path d="M4 12l8-8v6h8v4h-8v6z"/></svg>
+              <span class="btn-label">LOOK LEFT</span>
+            </button>
+
+            <!-- CENTER / RESET Button -->
+            <button id="btnCenter" class="dpad-btn btn-center" data-dir="CENTER" title="Center / Neutral (Space)">
+              <div class="center-cross"></div>
+              <span class="btn-label">CENTER</span>
+            </button>
+
+            <!-- RIGHT Button -->
+            <button id="btnRight" class="dpad-btn btn-right" data-dir="RIGHT" title="Look Right (Arrow Right / D)">
+              <div class="key-hint">D / →</div>
+              <svg class="dpad-arrow" viewBox="0 0 24 24"><path d="M20 12l-8-8v6H4v4h8v6z"/></svg>
+              <span class="btn-label">LOOK RIGHT</span>
+            </button>
+
+            <!-- DOWN Button -->
+            <button id="btnDown" class="dpad-btn btn-down" data-dir="DOWN" title="Look Down (Arrow Down / S)">
+              <div class="key-hint">S / ↓</div>
+              <svg class="dpad-arrow" viewBox="0 0 24 24"><path d="M12 20l8-8h-6V4h-4v8H4z"/></svg>
+              <span class="btn-label">LOOK DOWN</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Movement Presets -->
+        <div class="action-presets">
+          <span class="sub-heading">AUTONOMOUS PRESETS</span>
+          <div class="preset-grid">
+            <button class="preset-btn" id="btnPatrolTilt" title="Continuous Up / Down Tilt Sweep Scan">↕️ Sweep Up/Down</button>
+            <button class="preset-btn" id="btnPatrol" title="Continuous Left / Right Pan Sweep Scan">↔️ Sweep Left/Right</button>
+            <button class="preset-btn btn-mouth-on" id="btnMouthOn" title="Open Mouth (Pin 3)">👄 MOUTH ON</button>
+            <button class="preset-btn btn-mouth-off" id="btnMouthOff" title="Close Mouth (Pin 3)">🤐 MOUTH CLOSE</button>
+            <button class="preset-btn btn-preset-center" id="btnPresetCenter">🎯 Center (Home)</button>
+            <button class="preset-btn btn-hand-preset" id="btnPresetHand" title="Toggle Real-Time Hand Tracking (Webcam)">✋ Hand Follow</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Center Column: 3D Robot Head Visualizer & Viewport HUD -->
+      <section class="hud-panel center-panel">
+        <div class="panel-header header-center">
+          <h2>3D HEAD ORIENTATION</h2>
+        </div>
+
+        <div class="viewport-container">
+          <!-- 3D Canvas View -->
+          <div id="threeContainer" class="three-container">
+            <!-- HUD Overlays -->
+            <div class="reticle-hud">
+              <div class="crosshair-h"></div>
+              <div class="crosshair-v"></div>
+              <div class="crosshair-circle"></div>
+              <div class="crosshair-ticks"></div>
+            </div>
+
+            <div class="hud-readout top-left">
+              <div class="readout-label">YAW (PAN)</div>
+              <div class="readout-value" id="hudYaw">0.0°</div>
+            </div>
+            <div class="hud-readout top-right">
+              <div class="readout-label">PITCH (TILT)</div>
+              <div class="readout-value" id="hudPitch">0.0°</div>
+            </div>
+            <div class="hud-readout bottom-left">
+              <div class="readout-label">SERVO PAN [0-180]</div>
+              <div class="readout-value" id="servoPanVal">90°</div>
+            </div>
+            <div class="hud-readout bottom-right">
+              <div class="readout-label">SERVO TILT [0-180]</div>
+              <div class="readout-value" id="servoTiltVal">90°</div>
+            </div>
+
+            <div class="interaction-hint">
+              <span>🖱️ Drag to rotate view | Click D-Pad or use WASD / Arrow keys</span>
+            </div>
+          </div>
+
+          <!-- Real-Time Hand Tracking PiP HUD Overlay -->
+          <div id="handHudOverlay" class="hand-hud-overlay" style="display: none;">
+            <div class="hand-hud-header">
+              <div class="hand-hud-title">
+                <span class="live-dot"></span>
+                <span>VISION // HAND TRACKING</span>
+              </div>
+              <div class="hand-hud-controls">
+                <span id="handStatusBadge" class="hand-badge searching">SEARCHING</span>
+                <button id="btnMinimizeHandHud" class="hand-hud-btn" title="Minimize / Expand Video">⤢</button>
+                <button id="btnCloseHandHud" class="hand-hud-btn" title="Stop Hand Tracking">✕</button>
+              </div>
+            </div>
+
+            <div class="hand-video-container" id="handVideoContainer">
+              <video id="handWebcam" class="hand-webcam-feed" playsinline muted autoplay></video>
+              <canvas id="handCanvas" class="hand-canvas-hud" width="640" height="480"></canvas>
+              <div class="hand-scan-line"></div>
+              <div class="hand-crosshair-center"></div>
+            </div>
+
+            <div class="hand-hud-footer">
+              <div class="hand-metrics">
+                <div class="hand-metric-chip">
+                  <span class="lbl">PAN (YAW)</span>
+                  <span class="val" id="handValPan">90°</span>
+                </div>
+                <div class="hand-metric-chip">
+                  <span class="lbl">TILT (PITCH)</span>
+                  <span class="val" id="handValTilt">90°</span>
+                </div>
+                <div class="hand-metric-chip">
+                  <span class="lbl">GESTURE</span>
+                  <span class="val gesture-val" id="handValGesture">SEARCHING...</span>
+                </div>
+              </div>
+              <div class="hand-quick-toggles">
+                <label class="hand-toggle-label" title="Mirror horizontal direction">
+                  <input type="checkbox" id="chkHandMirror" checked>
+                  <span>Mirror</span>
+                </label>
+                <label class="hand-toggle-label" title="Invert vertical tilt direction">
+                  <input type="checkbox" id="chkHandInvertY">
+                  <span>Invert Y</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Precise Slider Control Bar -->
+        <div class="sliders-dock">
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <span>PAN ANGLE (YAW):</span>
+              <span id="sliderPanLabel" class="bold-val">90°</span>
+            </div>
+            <div class="slider-with-limits">
+              <span class="limit">0° (L)</span>
+              <input type="range" id="sliderPan" min="0" max="180" value="90" class="slider-cyan">
+              <span class="limit">180° (R)</span>
+            </div>
+          </div>
+
+          <div class="slider-group">
+            <div class="slider-label-row">
+              <span>TILT ANGLE (PITCH):</span>
+              <span id="sliderTiltLabel" class="bold-val">90°</span>
+            </div>
+            <div class="slider-with-limits">
+              <span class="limit">0° (Down)</span>
+              <input type="range" id="sliderTilt" min="0" max="180" value="90" class="slider-magenta">
+              <span class="limit">180° (Up)</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Speed & Pulse Control Engine -->
+      <section class="hud-panel right-panel">
+        <div class="panel-header">
+          <h2>PULSE & AI Q&A</h2>
+        </div>
+
+        <div class="right-panel-scroll">
+          <!-- Card 1: Master Neck Pulse ON / OFF System -->
+          <div class="control-card pulse-master-card">
+            <div class="card-title-row">
+              <span class="card-sub">PULSE GENERATOR</span>
+            </div>
+
+            <!-- Master Pulse ON / OFF Toggle Button -->
+            <button id="btnPulseToggle" class="btn-master-pulse" data-active="false">
+              <div class="pulse-orb"></div>
+              <div class="pulse-label-box">
+                <span class="pulse-main-text" id="pulseToggleTitle">PULSE: OFF</span>
+                <span class="pulse-sub-text" id="pulseToggleSub">CLICK TO TURN ON</span>
+              </div>
+              <span class="pulse-bolt">⚡</span>
+            </button>
+
+            <!-- Air Blow Action Button -->
+            <button id="btnBlow" class="btn btn-blow" title="Trigger Air Blow Action (💨)">
+              <span class="btn-blow-icon">💨</span>
+              <span class="btn-blow-text">BLOW</span>
+            </button>
+          </div>
+
+
+          <!-- Card 2: AI Customized Questions & Answers -->
+          <div class="control-card qa-card">
+            <div class="card-title-row">
+              <span class="card-sub">AI KNOWLEDGE & QUESTIONS</span>
+              <span class="pulse-state-tag" id="qaStatusTag">READY</span>
+            </div>
+
+            <!-- Voice Recognition Microphone Bar -->
+            <div class="voice-mic-bar">
+              <button class="btn-voice-mic" id="btnVoiceMic" title="Click to speak: Ask questions or say 'Turn Right', 'Turn Left', 'Look Up', 'Look Down', 'Center'">
+                <div class="voice-mic-orb"></div>
+                <div class="voice-mic-info">
+                  <span class="voice-mic-title" id="voiceMicTitle">🎙️ VOICE CONTROL: OFF</span>
+                  <span class="voice-mic-sub" id="voiceMicSub">CLICK TO START LISTENING</span>
+                </div>
+                <span class="voice-mic-badge" id="voiceMicBadge">MIC OFF</span>
+              </button>
+            </div>
+
+            <!-- Voice Transcript Live Readout Banner -->
+            <div class="voice-heard-banner" id="voiceHeardBanner" style="display: none;">
+              <span class="voice-heard-label">HEARD:</span>
+              <span class="voice-heard-text" id="voiceHeardText">"..."</span>
+            </div>
+
+            <!-- 4 Customized Questions -->
+            <div class="qa-grid">
+              <button class="qa-btn" data-qid="1" title="1) What is Robo Miracle?">
+                <span class="qa-num">01</span>
+                <div class="qa-label-wrap">
+                  <span class="qa-label">What is Robo Miracle?</span>
+                  <span class="qa-desc">Deep-Tech & AI Humanoids</span>
+                </div>
+                <span class="qa-icon">💡</span>
+              </button>
+
+              <button class="qa-btn" data-qid="2" title="2) What is Robotics?">
+                <span class="qa-num">02</span>
+                <div class="qa-label-wrap">
+                  <span class="qa-label">What is Robotics?</span>
+                  <span class="qa-desc">Science & Automation</span>
+                </div>
+                <span class="qa-icon">⚙️</span>
+              </button>
+
+              <button class="qa-btn" data-qid="3" title="3) What is your name?">
+                <span class="qa-num">03</span>
+                <div class="qa-label-wrap">
+                  <span class="qa-label">What is your name?</span>
+                  <span class="qa-desc">RoboHead Identity</span>
+                </div>
+                <span class="qa-icon">🤖</span>
+              </button>
+
+              <button class="qa-btn" data-qid="4" title="4) Where is pupil located?">
+                <span class="qa-num">04</span>
+                <div class="qa-label-wrap">
+                  <span class="qa-label">Where is pupil located?</span>
+                  <span class="qa-desc">Anatomy & Vision Center</span>
+                </div>
+                <span class="qa-icon">👁️</span>
+              </button>
+            </div>
+
+            <!-- Interactive Answer Screen -->
+            <div class="qa-display-box" id="qaDisplayBox">
+              <div class="qa-display-header">
+                <span class="qa-prompt-label" id="qaDisplayPrompt">SELECT A QUESTION TO HEAR ANSWER</span>
+                <button class="qa-voice-btn" id="qaVoiceBtn" title="Toggle Voice Output">🔊 VOICE ON</button>
+              </div>
+              <div class="qa-answer-text" id="qaAnswerText">Click any question above to hear the answer.</div>
+            </div>
+
+            <!-- Step Increment Selector -->
+            <div class="step-select-row" style="margin-top: 14px;">
+              <label class="section-micro-lbl">STEP INCREMENT (PER CLICK):</label>
+              <div class="pill-selector" id="stepSelector">
+                <button class="pill" data-step="1">1°</button>
+                <button class="pill active" data-step="5">5°</button>
+                <button class="pill" data-step="10">10°</button>
+                <button class="pill" data-step="15">15°</button>
+                <button class="pill" data-step="30">30°</button>
+              </div>
+            </div>
+
+            <!-- Movement Behavior Toggles -->
+            <div class="option-toggles">
+              <label class="toggle-switch">
+                <input type="checkbox" id="chkContinuous" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Hold-to-Continuous Move</span>
+              </label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="chkInvertPitch">
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Invert Pitch (Up/Down)</span>
+              </label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="chkInvertYaw">
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Invert Yaw (Left/Right)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settingsModal" style="display: none;">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h2>NETWORK & HARDWARE SETTINGS</h2>
+          <button class="modal-close" id="btnCloseSettings">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <div class="form-group">
+            <label>COMMUNICATION PROTOCOL</label>
+            <div class="radio-cards">
+              <label class="radio-card">
+                <input type="radio" name="protocolType" value="serial" checked>
+                <div class="card-content">
+                  <span class="card-title">🔌 Web Serial API (Direct USB Cable - Recommended)</span>
+                  <span class="card-desc">Direct USB connection to Arduino / ESP32 COM port (9600 Baud). Matches your .ino file!</span>
+                </div>
+              </label>
+              <label class="radio-card">
+                <input type="radio" name="protocolType" value="websocket">
+                <div class="card-content">
+                  <span class="card-title">WebSocket (Wi-Fi)</span>
+                  <span class="card-desc">High-speed duplex stream for ESP32 / ESP8266 or Node.js backend</span>
+                </div>
+              </label>
+              <label class="radio-card">
+                <input type="radio" name="protocolType" value="ros">
+                <div class="card-content">
+                  <span class="card-title">ROS Bridge (ROS 1 / ROS 2)</span>
+                  <span class="card-desc">Publish to /cmd_vel or custom pan_tilt topic via roslibjs/rosbridge_suite</span>
+                </div>
+              </label>
+              <label class="radio-card">
+                <input type="radio" name="protocolType" value="http">
+                <div class="card-content">
+                  <span class="card-title">HTTP REST / Web Server</span>
+                  <span class="card-desc">Direct GET/POST requests to ESP32 WebServer (e.g. /set_angle?pan=..&tilt=..)</span>
+                </div>
+              </label>
+              <label class="radio-card">
+                <input type="radio" name="protocolType" value="simulation">
+                <div class="card-content">
+                  <span class="card-title">Simulation / Offline Mode</span>
+                  <span class="card-desc">Virtual test mode to simulate robot response without physical hardware</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group" id="serialGroup">
+            <label for="selBaudRate">USB SERIAL BAUD RATE</label>
+            <select id="selBaudRate" class="text-input">
+              <option value="9600" selected>9600 Baud (Standard for your .ino file)</option>
+              <option value="115200">115200 Baud</option>
+              <option value="57600">57600 Baud</option>
+            </select>
+            <small>Matches Serial.begin(9600) in your Arduino / ESP32 sketch.</small>
+          </div>
+
+          <div class="form-group" id="wsGroup" style="display: none;">
+            <label for="txtWsUrl">WEBSOCKET SERVER URL</label>
+            <input type="text" id="txtWsUrl" class="text-input" value="ws://192.168.4.1:81">
+            <small>Default ESP32 SoftAP IP is often 192.168.4.1 or your local router IP (e.g., ws://192.168.1.100:81)</small>
+          </div>
+
+          <div class="form-group" id="rosGroup" style="display: none;">
+            <label for="txtRosTopic">ROS TOPIC NAME</label>
+            <input type="text" id="txtRosTopic" class="text-input" value="/robot/head_controller/command">
+            <label for="txtRosWsUrl" style="margin-top: 8px;">ROSBRIDGE WEBSOCKET URL</label>
+            <input type="text" id="txtRosWsUrl" class="text-input" value="ws://localhost:9090">
+          </div>
+
+          <div class="form-group" id="httpGroup" style="display: none;">
+            <label for="txtHttpUrl">HTTP ENDPOINT TEMPLATE</label>
+            <input type="text" id="txtHttpUrl" class="text-input" value="http://192.168.4.1/look?pan={pan}&tilt={tilt}&dir={dir}">
+            <div class="http-options">
+              <label>HTTP METHOD:</label>
+              <select id="selHttpMethod" class="text-input" style="width: auto; display: inline-block;">
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+              </select>
+            </div>
+            <small>Tokens {pan}, {tilt}, {dir} will be dynamically substituted before sending.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="txtCamUrl">ESP32-CAM / MJPEG VIDEO STREAM URL</label>
+            <input type="text" id="txtCamUrl" class="text-input" placeholder="http://192.168.4.1:81/stream">
+            <small>Leave empty if no camera module is connected.</small>
+          </div>
+
+          <div class="form-group">
+            <label>SERVO CALIBRATION LIMITS</label>
+            <div class="limits-grid">
+              <div>
+                <label>Pan Min (°)</label>
+                <input type="number" id="numPanMin" class="text-input" value="0" min="0" max="180">
+              </div>
+              <div>
+                <label>Pan Max (°)</label>
+                <input type="number" id="numPanMax" class="text-input" value="180" min="0" max="180">
+              </div>
+              <div>
+                <label>Tilt Min (°)</label>
+                <input type="number" id="numTiltMin" class="text-input" value="0" min="0" max="180">
+              </div>
+              <div>
+                <label>Tilt Max (°)</label>
+                <input type="number" id="numTiltMax" class="text-input" value="180" min="0" max="180">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="btnCancelSettings">Cancel</button>
+          <button class="btn btn-connect" id="btnSaveSettings">Save & Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Telemetry & Logs Modal (Open via 📜 button) -->
+    <div class="modal-overlay" id="logsModal" style="display: none;">
+      <div class="modal-box modal-lg">
+        <div class="modal-header">
+          <div class="title-with-badge">
+            <h2>TELEMETRY & PACKET LOGS</h2>
+            <span class="protocol-tag" id="activeProtoLabel">WS</span>
+          </div>
+          <div class="modal-header-actions">
+            <button id="btnClearLog" class="btn-tiny" title="Clear console">CLEAR</button>
+            <button class="modal-close" id="btnCloseLogs">✕</button>
+          </div>
+        </div>
+
+        <div class="modal-body">
+          <div class="endpoint-card">
+            <div class="endpoint-header">
+              <span class="label">ACTIVE TARGET</span>
+              <span class="endpoint-url" id="activeUrlDisplay">ws://192.168.4.1:81</span>
+            </div>
+            <div class="stats-mini-grid">
+              <div class="stat-box">
+                <span class="stat-lbl">SENT</span>
+                <span class="stat-num" id="statSent">0</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-lbl">RECV</span>
+                <span class="stat-num" id="statRecv">0</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-lbl">DROPPED</span>
+                <span class="stat-num" id="statDropped">0</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="terminal-wrapper" style="min-height: 280px; height: 320px;">
+            <div class="terminal-bar">
+              <span>PACKET TRANSMISSION STREAM</span>
+              <span class="terminal-status" id="txStatus">IDLE</span>
+            </div>
+            <div class="terminal-body" id="terminalLog">
+              <!-- Logs appended here -->
+            </div>
+          </div>
+
+          <div class="manual-cmd-bar">
+            <input type="text" id="customCmdInput" placeholder='{"cmd": "look", "pan": 90, "tilt": 90}' spellcheck="false">
+            <button id="btnSendCustom" class="btn btn-send">SEND</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="head_asset.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

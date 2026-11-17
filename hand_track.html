@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoboHead // Hand Tracking Studio (2-Column Vision Control)</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Google Fonts for futuristic cockpit look -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Three.js for 3D Robot Head Visualizer -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- MediaPipe Hands & Camera Utils for Real-Time Gesture Control -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body class="hand-studio-body-wrap">
+  <div class="hand-studio-container">
+    <!-- Top Minimalist Header -->
+    <header class="hand-studio-header">
+      <div class="header-left">
+        <div class="logo-badge">
+          <span class="pulse-ring"></span>
+          <span class="logo-icon">🤖</span>
+        </div>
+        <div class="title-group">
+          <h1>ROBO-HEAD // HAND TRACKING VISION STUDIO</h1>
+          <span class="sub-tag">TWO-COLUMN KINEMATIC DUAL FEED</span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="connection-bar">
+          <div class="status-indicator" id="connIndicator">
+            <span class="status-dot"></span>
+            <span class="status-text" id="connStatusText">DISCONNECTED</span>
+          </div>
+          <button id="btnQuickConnect" class="btn btn-connect">
+            <span class="btn-icon">⚡</span> CONNECT USB
+          </button>
+          <a href="index.html" class="btn btn-back-cockpit" title="Return to Full Cockpit Dashboard">
+            ← BACK TO COCKPIT
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Offline USB Notice (Visible only when disconnected) -->
+    <div id="offlineNotice" class="studio-offline-alert">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span class="alert-icon">⚠️</span>
+        <span class="alert-text"><b>ARDUINO DISCONNECTED:</b> Moving your hands rotates the 3D head on screen, but to move the <b>physical robot servos</b>, connect USB.</span>
+      </div>
+      <button id="btnBannerConnect" class="btn btn-tiny btn-alert-connect">⚡ CONNECT USB NOW</button>
+    </div>
+
+    <!-- Main Two-Column Studio Grid -->
+    <main class="hand-studio-grid">
+      <!-- COLUMN 1: THAT FACE (3D Robot Head Digital Twin) -->
+      <section class="studio-column column-face">
+        <div class="studio-column-header">
+          <h2>
+            <span class="col-icon">🤖</span>
+            <span>3D ROBOT HEAD // ORIENTATION</span>
+          </h2>
+          <div class="header-pills">
+            <span class="studio-pill live-pill">DIGITAL TWIN</span>
+          </div>
+        </div>
+
+        <div class="studio-viewport-body" id="faceViewport">
+          <!-- Three.js Canvas Container -->
+          <div id="threeContainer" class="three-container">
+            <!-- HUD Overlays on Face -->
+            <div class="reticle-hud">
+              <div class="crosshair-h"></div>
+              <div class="crosshair-v"></div>
+              <div class="crosshair-circle"></div>
+              <div class="crosshair-ticks"></div>
+            </div>
+
+            <div class="hud-readout top-left">
+              <div class="readout-label">YAW (PAN ANGLE)</div>
+              <div class="readout-value" id="hudYaw">0.0°</div>
+            </div>
+            <div class="hud-readout top-right">
+              <div class="readout-label">PITCH (TILT ANGLE)</div>
+              <div class="readout-value" id="hudPitch">0.0°</div>
+            </div>
+            <div class="hud-readout bottom-left">
+              <div class="readout-label">PIN 6 (PAN SERVO)</div>
+              <div class="readout-value" id="servoPanVal">90°</div>
+            </div>
+            <div class="hud-readout bottom-right">
+              <div class="readout-label">PIN 9 (TILT SERVO)</div>
+              <div class="readout-value" id="servoTiltVal">90°</div>
+            </div>
+
+            <div class="interaction-hint">
+              <span>🖱️ Drag to rotate 3D view | Head follows your hand in real time</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Column 1 Footer: Angle Readouts & Quick Center -->
+        <div class="studio-footer">
+          <div class="studio-face-stats">
+            <div class="studio-stat-chip">
+              <span class="stat-lbl">PAN SERVO</span>
+              <span class="stat-val" id="chipPanVal">90°</span>
+            </div>
+            <div class="studio-stat-chip">
+              <span class="stat-lbl">TILT SERVO</span>
+              <span class="stat-val" id="chipTiltVal">90°</span>
+            </div>
+            <div class="studio-stat-chip">
+              <span class="stat-lbl">TRACKING STATE</span>
+              <span class="stat-val status-val" id="chipTrackState">SEARCHING</span>
+            </div>
+            <button id="btnCenterHead" class="btn btn-tiny btn-center-head" title="Reset Head to Neutral (90°, 90°)">
+              🎯 RE-CENTER
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- COLUMN 2: CAMERA PORTION (Hand Tracking Vision Feed) -->
+      <section class="studio-column column-camera">
+        <div class="studio-column-header">
+          <h2>
+            <span class="col-icon">✋</span>
+            <span>CAMERA PORTION // HAND TRACKING</span>
+          </h2>
+          <div class="header-pills">
+            <span id="handStatusBadge" class="hand-badge searching">SEARCHING HAND</span>
+          </div>
+        </div>
+
+        <div class="studio-camera-body" id="cameraViewport">
+          <!-- Hidden video feed -->
+          <video id="handWebcam" class="studio-webcam-feed" playsinline muted autoplay></video>
+          <!-- Mirrored Cybernetic Canvas -->
+          <canvas id="handCanvas" class="studio-canvas-camera" width="640" height="480"></canvas>
+          <!-- Cybernetic Reticle and Scanline -->
+          <div class="hand-scan-line"></div>
+          <div class="hand-crosshair-center"></div>
+
+          <!-- Prompt Banner when camera not active or searching -->
+          <div class="camera-center-guide" id="cameraGuide">
+            <div class="guide-circle"></div>
+            <span class="guide-text" id="guideText">WAVE OR RAISE YOUR HAND TO TRACK</span>
+          </div>
+        </div>
+
+        <!-- Column 2 Footer: Hand Metrics & Control Sliders -->
+        <div class="studio-footer">
+          <div class="studio-camera-controls">
+            <div class="metrics-grid">
+              <div class="studio-stat-chip">
+                <span class="stat-lbl">HAND POSITION (X, Y)</span>
+                <span class="stat-val" id="handMetricCoords">X: 0.50 | Y: 0.50</span>
+              </div>
+              <div class="studio-stat-chip">
+                <span class="stat-lbl">DETECTED GESTURE</span>
+                <span class="stat-val gesture-val" id="handValGesture">SEARCHING...</span>
+              </div>
+              <div class="studio-stat-chip">
+                <span class="stat-lbl">SERIAL DISPATCH</span>
+                <span class="stat-val serial-val" id="serialDispatchRate">20 Hz (STABLE)</span>
+              </div>
+            </div>
+
+            <div class="toggles-row">
+              <label class="studio-toggle">
+                <input type="checkbox" id="chkHandMirror" checked>
+                <span class="toggle-slider-mini"></span>
+                <span class="toggle-text">Mirror Pan (Left / Right)</span>
+              </label>
+              <label class="studio-toggle">
+                <input type="checkbox" id="chkHandInvertY">
+                <span class="toggle-slider-mini"></span>
+                <span class="toggle-text">Invert Tilt (Up / Down)</span>
+              </label>
+              <div class="smoothing-wrap">
+                <span class="smoothing-lbl">Smoothing:</span>
+                <input type="range" id="rngSmoothing" min="1" max="9" value="4" class="slider-cyan-mini" title="Adjust hand movement smoothing">
+              </div>
+              <button id="btnRestartCamera" class="btn btn-tiny" title="Restart / Refresh Camera">
+                📷 REFRESH CAM
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="head_asset.js"></script>
+  <script src="hand_track.js"></script>
+</body>
+</html>
+
