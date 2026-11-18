@@ -838,21 +838,38 @@ function runMotionFallbackFrame(ctx, video, w, h) {
 }
 
 // ============================================================================
-// Smart USB Camera Manager (Auto-Enable Robot USB Cam & Disable Laptop Cam)
+// Primary / Secondary Camera Manager
+// - PRIMARY   : External USB Web Camera (always active when connected)
+// - SECONDARY : Built-in Laptop Camera (enabled ONLY when Web Camera is NOT connected)
 // ============================================================================
+
+const PRIMARY_CAM_STORAGE_KEY = 'robohead_primary_webcam_label';
 
 const BUILTIN_CAM_PATTERNS = [
   'integrated', 'built-in', 'builtin', 'internal', 'laptop',
-  'facetime', 'truevision', 'user facing', 'hd user', 'front',
-  'acer', 'lenovo', 'dell', 'asus', 'hp ', 'surface',
-  'ir camera', 'windows hello', 'chicony', 'realtek', 'bison', 'quanta'
+  'facetime', 'truevision', 'user facing', 'hd user',
+  'acer hd', 'acer crystal', 'crystal eye', 'surface camera',
+  'ov56', 'ov27', 'ov97'
 ];
 
-const EXTERNAL_USB_PATTERNS = [
-  'usb', 'uvc', 'external', 'robot', 'pc camera', 'hd camera',
-  'webcam', 'logitech', 'c270', 'c920', 'arducam', 'microdia',
-  'sonix', 'general', 'capture', '2.0', '3.0'
+const VIRTUAL_OR_IR_PATTERNS = [
+  'ir camera', 'windows hello', 'infrared', 'depth',
+  'obs virtual', 'virtual camera', 'snap camera', 'manycam'
 ];
+
+const EXTERNAL_WEBCAM_PATTERNS = [
+  'usb', 'uvc', 'webcam', 'web cam', 'pc camera', 'external',
+  'logitech', 'c270', 'c310', 'c920', 'c922', 'brio',
+  'zebronics', 'quantum', 'iball', 'intex', 'rapoo', 'anker',
+  'razer', 'elgato', 'lifecam', 'creative', 'arducam',
+  'hd camera', 'fhd', '1080p', '720p', '2.0', '3.0', 'general', 'sonix', 'microdia'
+];
+
+function isVirtualOrIrCamera(label) {
+  const lower = (label || '').toLowerCase();
+  if (!lower) return false;
+  return VIRTUAL_OR_IR_PATTERNS.some((kw) => lower.includes(kw));
+}
 
 function isBuiltInLaptopCamera(label) {
   const lower = (label || '').toLowerCase();
@@ -860,72 +877,102 @@ function isBuiltInLaptopCamera(label) {
   return BUILTIN_CAM_PATTERNS.some((kw) => lower.includes(kw));
 }
 
-function isExternalUsbCamera(label) {
+function isExternalWebCamera(label) {
   const lower = (label || '').toLowerCase();
   if (!lower) return false;
-  return EXTERNAL_USB_PATTERNS.some((kw) => lower.includes(kw)) && !isBuiltInLaptopCamera(lower);
+  if (isVirtualOrIrCamera(lower) || isBuiltInLaptopCamera(lower)) return false;
+  return EXTERNAL_WEBCAM_PATTERNS.some((kw) => lower.includes(kw));
 }
 
 /**
- * Picks the best camera device:
- * - Whenever another USB camera is connected (2+ cameras, or an external USB camera),
- *   the built-in laptop camera is strictly DISABLED and the Robot USB camera is selected.
- * - Falls back to the single available camera only if no external USB camera is attached.
+ * Splits available cameras into Primary (External Web Camera) and Secondary (Laptop Camera).
+ * Rule:
+ *   1. If an external Web Camera is connected -> Web Camera is PRIMARY, Laptop Camera is DISABLED.
+ *   2. If NO external Web Camera is connected -> Laptop Camera (SECONDARY) is enabled.
  */
 function chooseBestCamera(videoDevices) {
   if (!videoDevices || videoDevices.length === 0) {
-    return { device: null, isRobotCam: false, hasExternal: false };
+    return { device: null, isPrimaryWebCam: false, hasWebCam: false, builtInIds: new Set() };
   }
 
-  // Only 1 camera connected on the system
-  if (videoDevices.length === 1) {
-    const onlyCam = videoDevices[0];
-    const isExt = isExternalUsbCamera(onlyCam.label);
-    return { device: onlyCam, isRobotCam: isExt, hasExternal: isExt };
+  // Exclude IR / virtual cameras unless they are the only devices available
+  const realCams = videoDevices.filter((d) => !isVirtualOrIrCamera(d.label));
+  const candidates = realCams.length > 0 ? realCams : videoDevices;
+
+  // Only 1 real camera on the machine
+  if (candidates.length === 1) {
+    const onlyCam = candidates[0];
+    const isExt = isExternalWebCamera(onlyCam.label);
+    return {
+      device: onlyCam,
+      isPrimaryWebCam: isExt,
+      hasWebCam: isExt,
+      builtInIds: isExt ? new Set() : new Set([onlyCam.deviceId])
+    };
   }
 
-  // 2+ cameras detected -> External USB Robot Camera is connected!
-  // Built-in laptop camera MUST be disabled and never chosen.
-  const nonBuiltInCams = videoDevices.filter((d) => !isBuiltInLaptopCamera(d.label));
-  const explicitUsbCams = videoDevices.filter((d) => isExternalUsbCamera(d.label));
+  // 2+ real cameras detected -> An external Web Camera is connected!
+  // Identify built-in laptop camera(s) so they are strictly disabled.
+  let builtInCams = candidates.filter((d) => isBuiltInLaptopCamera(d.label));
+  let externalCams = candidates.filter((d) => !isBuiltInLaptopCamera(d.label));
 
-  // If user manually chose one of the external USB cameras and it is still plugged in
+  // If no label matched built-in patterns (generic OS names), Windows puts built-in laptop cam at index 0
+  if (builtInCams.length === 0 && externalCams.length >= 2) {
+    const explicitExt = externalCams.filter((d) => isExternalWebCamera(d.label));
+    if (explicitExt.length > 0 && explicitExt.length < externalCams.length) {
+      builtInCams = externalCams.filter((d) => !explicitExt.includes(d));
+      externalCams = explicitExt;
+    } else {
+      builtInCams = [candidates[0]];
+      externalCams = candidates.slice(1);
+    }
+  } else if (externalCams.length === 0) {
+    // Edge case: all labels matched built-in keywords — treat last plugged camera as primary external
+    builtInCams = candidates.slice(0, -1);
+    externalCams = [candidates[candidates.length - 1]];
+  }
+
+  const builtInIds = new Set(builtInCams.map((d) => d.deviceId));
+
+  // 1. Honor manually selected external web camera if still connected
   if (state.camera.preferredExternalId) {
-    const preferred = (nonBuiltInCams.length > 0 ? nonBuiltInCams : videoDevices).find(
-      (d) => d.deviceId === state.camera.preferredExternalId
-    );
+    const preferred = externalCams.find((d) => d.deviceId === state.camera.preferredExternalId);
     if (preferred) {
-      return { device: preferred, isRobotCam: true, hasExternal: true };
+      return { device: preferred, isPrimaryWebCam: true, hasWebCam: true, builtInIds };
     }
   }
 
-  if (explicitUsbCams.length > 0) {
-    return { device: explicitUsbCams[0], isRobotCam: true, hasExternal: true };
-  }
-  if (nonBuiltInCams.length > 0) {
-    return { device: nonBuiltInCams[0], isRobotCam: true, hasExternal: true };
-  }
+  // 2. Honor saved primary web camera label from localStorage if connected
+  try {
+    const savedLabel = localStorage.getItem(PRIMARY_CAM_STORAGE_KEY);
+    if (savedLabel) {
+      const savedCam = externalCams.find((d) => d.label === savedLabel);
+      if (savedCam) {
+        return { device: savedCam, isPrimaryWebCam: true, hasWebCam: true, builtInIds };
+      }
+    }
+  } catch (e) {}
 
-  // Fallback when OS hides labels or gives identical generic names:
-  // Windows lists built-in laptop webcam at index 0 and external USB cameras after it.
-  const externalFallback = videoDevices[videoDevices.length - 1];
-  return { device: externalFallback, isRobotCam: true, hasExternal: true };
+  // 3. Prefer explicitly recognized USB/UVC external web cameras first
+  const explicitWebCam = externalCams.find((d) => isExternalWebCamera(d.label));
+  const chosen = explicitWebCam || externalCams[0];
+  return { device: chosen, isPrimaryWebCam: true, hasWebCam: true, builtInIds };
 }
 
-function updateCameraSourceUI(videoDevices, selectedDevice, isRobotCam, hasExternal) {
+function updateCameraSourceUI(videoDevices, selectedDevice, isPrimaryWebCam, hasWebCam, builtInIds = new Set()) {
   if (dom.camSourceBadge) {
     if (!selectedDevice) {
       dom.camSourceBadge.textContent = '❌ NO CAMERA';
       dom.camSourceBadge.className = 'studio-pill cam-pill';
       dom.camSourceBadge.title = 'No camera detected';
-    } else if (isRobotCam) {
-      dom.camSourceBadge.textContent = '🤖 ROBOT USB CAM';
+    } else if (isPrimaryWebCam) {
+      dom.camSourceBadge.textContent = '🎥 WEB CAM (PRIMARY)';
       dom.camSourceBadge.className = 'studio-pill cam-pill robot-cam';
-      dom.camSourceBadge.title = `Active: ${selectedDevice.label || 'USB Camera'} (Laptop camera disabled)`;
+      dom.camSourceBadge.title = `Primary Web Camera: ${selectedDevice.label || 'USB Web Camera'} (Secondary Laptop Camera disabled)`;
     } else {
-      dom.camSourceBadge.textContent = '💻 LAPTOP CAM';
+      dom.camSourceBadge.textContent = '💻 LAPTOP CAM (SECONDARY)';
       dom.camSourceBadge.className = 'studio-pill cam-pill laptop-cam';
-      dom.camSourceBadge.title = `Active: ${selectedDevice.label || 'Built-in Camera'} — Connect Robot USB Camera to auto-switch`;
+      dom.camSourceBadge.title = `Web Camera not connected — using Secondary Laptop Camera (${selectedDevice.label || 'Built-in'})`;
     }
   }
 
@@ -943,15 +990,15 @@ function updateCameraSourceUI(videoDevices, selectedDevice, isRobotCam, hasExter
       const opt = document.createElement('option');
       opt.value = dev.deviceId;
       const rawName = dev.label || `Camera ${idx + 1}`;
-      const isBuiltIn = isBuiltInLaptopCamera(rawName) || (hasExternal && videoDevices.length >= 2 && idx === 0 && dev.deviceId !== selectedDevice?.deviceId && !isExternalUsbCamera(rawName));
+      const isSecondaryLaptop = builtInIds.has(dev.deviceId) || isBuiltInLaptopCamera(rawName);
 
-      if (hasExternal && isBuiltIn) {
+      if (hasWebCam && isSecondaryLaptop) {
         opt.disabled = true;
-        opt.textContent = `🚫 ${rawName} (Disabled)`;
-      } else if (hasExternal) {
-        opt.textContent = `🤖 ${rawName}`;
+        opt.textContent = `🚫 ${rawName} (Secondary - Disabled)`;
+      } else if (hasWebCam && !isVirtualOrIrCamera(rawName)) {
+        opt.textContent = `🎥 [PRIMARY] ${rawName}`;
       } else {
-        opt.textContent = `💻 ${rawName}`;
+        opt.textContent = `💻 [SECONDARY] ${rawName}`;
       }
 
       if (selectedDevice && dev.deviceId === selectedDevice.deviceId) {
@@ -964,7 +1011,10 @@ function updateCameraSourceUI(videoDevices, selectedDevice, isRobotCam, hasExter
 
 function stopCameraStreamOnly() {
   if (state.hand.stream) {
-    state.hand.stream.getTracks().forEach((t) => t.stop());
+    state.hand.stream.getTracks().forEach((t) => {
+      t.onended = null;
+      t.stop();
+    });
     state.hand.stream = null;
   }
   if (dom.handWebcam) {
@@ -972,21 +1022,34 @@ function stopCameraStreamOnly() {
   }
 }
 
-async function openCameraStreamForDevice(targetDevice) {
-  // Always stop previous stream tracks first so laptop camera LED turns OFF immediately
+async function openCameraStreamForDevice(targetDevice, retryAttempt = 0) {
+  // Always stop previous stream tracks first so the disabled camera's LED turns OFF immediately
   stopCameraStreamOnly();
 
   const videoConstraints =
     targetDevice && targetDevice.deviceId
       ? { deviceId: { exact: targetDevice.deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
-      : { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' };
+      : { width: { ideal: 640 }, height: { ideal: 480 } };
 
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
   } catch (err) {
-    // Fallback without strict resolution constraints if the USB camera uses a different native mode
-    if (targetDevice && targetDevice.deviceId) {
+    // Retry once/twice if a newly plugged-in USB web camera driver is still initializing
+    if (
+      retryAttempt < 2 &&
+      (err.name === 'NotReadableError' || err.name === 'AbortError' || err.name === 'OverconstrainedError')
+    ) {
+      await new Promise((r) => setTimeout(r, 550));
+      if (targetDevice && targetDevice.deviceId && err.name === 'OverconstrainedError') {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: targetDevice.deviceId } },
+          audio: false
+        });
+      } else {
+        return openCameraStreamForDevice(targetDevice, retryAttempt + 1);
+      }
+    } else if (targetDevice && targetDevice.deviceId) {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { deviceId: { exact: targetDevice.deviceId } },
         audio: false
@@ -1003,6 +1066,19 @@ async function openCameraStreamForDevice(targetDevice) {
   const settings = activeTrack ? activeTrack.getSettings() : {};
   state.camera.activeDeviceId = settings.deviceId || (targetDevice ? targetDevice.deviceId : null);
   state.camera.activeLabel = (activeTrack && activeTrack.label) || (targetDevice ? targetDevice.label : '');
+
+  // If the active primary web camera is unplugged, immediately fall back to secondary laptop camera
+  if (activeTrack) {
+    activeTrack.onended = () => {
+      console.log('[CAMERA] Active camera disconnected — switching to available camera...');
+      state.camera.activeDeviceId = null;
+      if (state.hand.active && !state.camera.isSwitching) {
+        setTimeout(() => {
+          refreshAndSwitchCamera(true).catch((e) => console.warn('[CAMERA FALLBACK]', e));
+        }, 300);
+      }
+    };
+  }
 
   if (dom.handWebcam) {
     dom.handWebcam.srcObject = stream;
@@ -1027,14 +1103,14 @@ async function refreshAndSwitchCamera(forceRescan = false) {
       const initialChoice = chooseBestCamera(videoDevices);
       await openCameraStreamForDevice(initialChoice.device);
 
-      // Re-enumerate now that permission is granted and exact USB device labels are visible
+      // Re-enumerate now that permission is granted and exact device labels are visible
       devices = await navigator.mediaDevices.enumerateDevices();
       videoDevices = devices.filter((d) => d.kind === 'videoinput');
     }
 
     const best = chooseBestCamera(videoDevices);
-    state.camera.isRobotCam = best.isRobotCam;
-    state.camera.hasExternalCam = best.hasExternal;
+    state.camera.isRobotCam = best.isPrimaryWebCam;
+    state.camera.hasExternalCam = best.hasWebCam;
 
     const needsSwitch =
       best.device &&
@@ -1043,13 +1119,13 @@ async function refreshAndSwitchCamera(forceRescan = false) {
     if (needsSwitch && best.device) {
       if (best.device.deviceId !== state.camera.activeDeviceId || !state.hand.stream) {
         console.log(
-          `[CAMERA] Switching to ${best.isRobotCam ? 'ROBOT USB CAMERA' : 'LAPTOP CAMERA'}: ${best.device.label || best.device.deviceId}`
+          `[CAMERA] Activating ${best.isPrimaryWebCam ? 'PRIMARY WEB CAMERA' : 'SECONDARY LAPTOP CAMERA'}: ${best.device.label || best.device.deviceId}`
         );
         await openCameraStreamForDevice(best.device);
       }
     }
 
-    updateCameraSourceUI(videoDevices, best.device, best.isRobotCam, best.hasExternal);
+    updateCameraSourceUI(videoDevices, best.device, best.isPrimaryWebCam, best.hasWebCam, best.builtInIds);
   } catch (err) {
     console.error('[CAMERA SWITCH ERROR]', err);
     throw err;
@@ -1147,10 +1223,17 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
   if (dom.selCameraSource) {
-    dom.selCameraSource.addEventListener('change', (e) => {
+    dom.selCameraSource.addEventListener('change', async (e) => {
       const chosenId = e.target.value;
       if (chosenId) {
         state.camera.preferredExternalId = chosenId;
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const picked = devices.find((d) => d.kind === 'videoinput' && d.deviceId === chosenId);
+          if (picked && picked.label && !isBuiltInLaptopCamera(picked.label)) {
+            localStorage.setItem(PRIMARY_CAM_STORAGE_KEY, picked.label);
+          }
+        } catch (err) {}
         refreshAndSwitchCamera(true).catch((err) => console.warn('[CAMERA SELECT]', err));
       }
     });

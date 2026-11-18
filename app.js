@@ -2636,6 +2636,56 @@ function initHandTracking() {
   }
 }
 
+async function getPreferredWebcamStream() {
+  const builtinPatterns = [
+    'integrated', 'built-in', 'builtin', 'internal', 'laptop',
+    'facetime', 'truevision', 'user facing', 'hd user', 'acer hd', 'acer crystal', 'crystal eye'
+  ];
+  const virtualIrPatterns = ['ir camera', 'windows hello', 'infrared', 'depth', 'obs virtual', 'virtual camera'];
+  const isBuiltIn = (lbl) => builtinPatterns.some((kw) => (lbl || '').toLowerCase().includes(kw));
+  const isVirtualIr = (lbl) => virtualIrPatterns.some((kw) => (lbl || '').toLowerCase().includes(kw));
+
+  let devices = await navigator.mediaDevices.enumerateDevices();
+  let videoDevices = devices.filter((d) => d.kind === 'videoinput');
+  let tempStream = null;
+
+  if (videoDevices.length > 0 && videoDevices.every((d) => !d.label)) {
+    tempStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
+    devices = await navigator.mediaDevices.enumerateDevices();
+    videoDevices = devices.filter((d) => d.kind === 'videoinput');
+  }
+
+  const realCams = videoDevices.filter((d) => !isVirtualIr(d.label));
+  const candidates = realCams.length > 0 ? realCams : videoDevices;
+
+  // Primary = External USB Web Camera; Secondary = Built-in Laptop Camera (only when Web Camera is not connected)
+  let chosen = null;
+  if (candidates.length >= 2) {
+    const externalCams = candidates.filter((d) => !isBuiltIn(d.label));
+    chosen = externalCams.length > 0 ? externalCams[0] : candidates[candidates.length - 1];
+    log(`[CAMERA] 🎥 Primary Web Camera selected: ${chosen.label || 'USB Web Camera'} (Laptop camera disabled)`, 'rx');
+  } else if (candidates.length === 1) {
+    chosen = candidates[0];
+    log(`[CAMERA] 💻 Secondary Laptop Camera active (No external web camera detected): ${chosen.label || 'Default Camera'}`, 'info');
+  }
+
+  if (tempStream) {
+    const activeTrack = tempStream.getVideoTracks()[0];
+    const activeId = activeTrack ? activeTrack.getSettings().deviceId : null;
+    if (!chosen || activeId === chosen.deviceId) {
+      return tempStream;
+    }
+    tempStream.getTracks().forEach((t) => t.stop());
+  }
+
+  return navigator.mediaDevices.getUserMedia({
+    video: chosen && chosen.deviceId
+      ? { deviceId: { exact: chosen.deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+      : { width: { ideal: 640 }, height: { ideal: 480 } },
+    audio: false
+  });
+}
+
 async function startHandTracking() {
   if (handTrack.active) return;
 
@@ -2644,17 +2694,10 @@ async function startHandTracking() {
     return;
   }
 
-  log('[HAND TRACK] ✋ Requesting webcam video feed...', 'info');
+  log('[HAND TRACK] ✋ Requesting camera video feed (Web Camera primary, Laptop secondary)...', 'info');
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: 640 },
-        height: { ideal: 480 },
-        facingMode: 'user'
-      },
-      audio: false
-    });
+    const stream = await getPreferredWebcamStream();
 
     handTrack.stream = stream;
     handTrack.active = true;
