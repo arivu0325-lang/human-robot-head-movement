@@ -407,10 +407,10 @@ function buildRobotModel() {
 }
 
 function update3DHeadAngles(panAngle, tiltAngle) {
-  // Pan 90° is neutral (0 rad). 0° is -45°, 180° is +45°
-  targetEulerYaw = -((panAngle - 90) * (Math.PI / 180));
-  // Tilt 90° is neutral. 140° is look up (+tilt), 65° is look down (-tilt)
-  targetEulerPitch = ((tiltAngle - 90) * (Math.PI / 180));
+  // Pan (X-axis Yaw): 90° neutral. 140° is LEFT (+Yaw in Three.js). 50° is RIGHT (-Yaw in Three.js).
+  targetEulerYaw = ((panAngle - 90) * (Math.PI / 180));
+  // Tilt (Y-axis Pitch): 90° neutral. 140° is UP (-Pitch in Three.js). 65° is DOWN (+Pitch in Three.js).
+  targetEulerPitch = -((tiltAngle - 90) * (Math.PI / 180));
 
   // Update DOM HUD readouts
   const relYaw = (panAngle - 90).toFixed(1);
@@ -678,19 +678,54 @@ function analyzeHandGesture(lm) {
 }
 
 function computeAndApplyKinematics(visualX, visualY) {
-  // Comfortable 15% margin on camera frame
-  const normX = Math.max(0, Math.min(1, (visualX - 0.15) / 0.70));
-  const normY = Math.max(0, Math.min(1, (visualY - 0.15) / 0.70));
+  // Active tracking area with padding (0.12 to 0.88 for natural comfortable arm reach)
+  const normX = Math.max(0, Math.min(1, (visualX - 0.12) / 0.76));
+  const normY = Math.max(0, Math.min(1, (visualY - 0.12) / 0.76));
 
-  // Horizontal Pan: Hand Left (normX near 0) -> Pan Left (140°). Hand Right -> Pan Right (50°)
-  const panRatio = state.hand.mirrorX ? (1.0 - normX) : normX;
-  const targetPan = Math.round(state.panMin + panRatio * (state.panMax - state.panMin));
+  // =========================================================================
+  // X-AXIS KINEMATICS: PAN (PIN 6 SERVO) - LEFT & RIGHT
+  // - Neutral Hand Center (normX = 0.5) -> Pan = 90° (CENTER)
+  // - Hand moving LEFT (normX < 0.5) -> Pan increases from 90° to 140° (LEFT)
+  // - Hand moving RIGHT (normX > 0.5) -> Pan decreases from 90° to 50° (RIGHT)
+  // =========================================================================
+  let targetPan;
+  if (state.hand.mirrorX) {
+    targetPan = Math.round(90 + (0.5 - normX) * 2 * (140 - 90));
+  } else {
+    targetPan = Math.round(90 + (normX - 0.5) * 2 * (140 - 90));
+  }
+  targetPan = Math.max(50, Math.min(140, targetPan));
 
-  // Vertical Tilt: Hand Up (normY near 0) -> Tilt Up (135°). Hand Down -> Tilt Down (60°)
-  const tiltRatio = state.hand.invertY ? normY : (1.0 - normY);
-  const targetTilt = Math.round(state.tiltMin + tiltRatio * (state.tiltMax - state.tiltMin));
+  // =========================================================================
+  // Y-AXIS KINEMATICS: TILT (PIN 9 SERVO) - UP & DOWN
+  // - Neutral Hand Center (normY = 0.5) -> Tilt = 90° (CENTER)
+  // - Hand moving UP (normY < 0.5) -> Tilt increases from 90° to 140° (UP)
+  // - Hand moving DOWN (normY > 0.5) -> Tilt decreases from 90° to 65° (DOWN)
+  // =========================================================================
+  let targetTilt;
+  if (!state.hand.invertY) {
+    if (normY <= 0.5) {
+      // Hand is UP
+      const upRatio = (0.5 - normY) / 0.5; // 0 to 1
+      targetTilt = Math.round(90 + upRatio * (140 - 90));
+    } else {
+      // Hand is DOWN
+      const downRatio = (normY - 0.5) / 0.5; // 0 to 1
+      targetTilt = Math.round(90 - downRatio * (90 - 65));
+    }
+  } else {
+    // Invert Y
+    if (normY <= 0.5) {
+      const upRatio = (0.5 - normY) / 0.5;
+      targetTilt = Math.round(90 - upRatio * (90 - 65));
+    } else {
+      const downRatio = (normY - 0.5) / 0.5;
+      targetTilt = Math.round(90 + downRatio * (140 - 90));
+    }
+  }
+  targetTilt = Math.max(65, Math.min(140, targetTilt));
 
-  // Lerp smoothing
+  // Fluid Lerp smoothing for zero-jitter tracking
   state.hand.smoothedPan += (targetPan - state.hand.smoothedPan) * state.hand.smoothing;
   state.hand.smoothedTilt += (targetTilt - state.hand.smoothedTilt) * state.hand.smoothing;
 
@@ -700,7 +735,7 @@ function computeAndApplyKinematics(visualX, visualY) {
   // Update 3D Face Viewport (Column 1)
   update3DHeadAngles(state.pan, state.tilt);
 
-  // Throttled Serial Transmission to Arduino (Pin 6 Pan & Pin 9 Tilt)
+  // Throttled Serial Transmission to Arduino Uno (Pin 6 Pan & Pin 9 Tilt)
   const now = performance.now();
   if (now - state.hand.lastSerialDispatch >= 50) { // 20 Hz stable rate
     state.hand.lastSerialDispatch = now;
@@ -879,7 +914,10 @@ function drawTargetReticle(ctx, x, y, label) {
 
   ctx.font = '11px JetBrains Mono, monospace';
   ctx.fillStyle = '#00ff88';
-  ctx.fillText(label, x + 28, y - 10);
+  ctx.fillText(label, x + 28, y - 8);
+  ctx.font = '10px JetBrains Mono, monospace';
+  ctx.fillStyle = '#00f0ff';
+  ctx.fillText(`X:${state.pan}° Y:${state.tilt}°`, x + 28, y + 8);
 
   ctx.restore();
 }

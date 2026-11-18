@@ -82,11 +82,11 @@
             </div>
 
             <div class="hud-readout top-left">
-              <div class="readout-label">YAW (PAN ANGLE)</div>
+              <div class="readout-label">X-AXIS // PAN (LEFT / RIGHT)</div>
               <div class="readout-value" id="hudYaw">0.0°</div>
             </div>
             <div class="hud-readout top-right">
-              <div class="readout-label">PITCH (TILT ANGLE)</div>
+              <div class="readout-label">Y-AXIS // TILT (UP / DOWN)</div>
               <div class="readout-value" id="hudPitch">0.0°</div>
             </div>
             <div class="hud-readout bottom-left">
@@ -99,7 +99,7 @@
             </div>
 
             <div class="interaction-hint">
-              <span>🖱️ Drag to rotate 3D view | Head follows your hand in real time</span>
+              <span>🖱️ Drag to rotate 3D view | Hand movement moves X (Pan) and Y (Tilt)</span>
             </div>
           </div>
         </div>
@@ -108,11 +108,11 @@
         <div class="studio-footer">
           <div class="studio-face-stats">
             <div class="studio-stat-chip">
-              <span class="stat-lbl">PAN SERVO</span>
+              <span class="stat-lbl">X-AXIS (PAN)</span>
               <span class="stat-val" id="chipPanVal">90°</span>
             </div>
             <div class="studio-stat-chip">
-              <span class="stat-lbl">TILT SERVO</span>
+              <span class="stat-lbl">Y-AXIS (TILT)</span>
               <span class="stat-val" id="chipTiltVal">90°</span>
             </div>
             <div class="studio-stat-chip">
@@ -150,7 +150,7 @@
           <!-- Prompt Banner when camera not active or searching -->
           <div class="camera-center-guide" id="cameraGuide">
             <div class="guide-circle"></div>
-            <span class="guide-text" id="guideText">WAVE OR RAISE YOUR HAND TO TRACK</span>
+            <span class="guide-text" id="guideText">MOVE HAND UP/DOWN (Y) OR LEFT/RIGHT (X)</span>
           </div>
         </div>
 
@@ -159,7 +159,7 @@
           <div class="studio-camera-controls">
             <div class="metrics-grid">
               <div class="studio-stat-chip">
-                <span class="stat-lbl">HAND POSITION (X, Y)</span>
+                <span class="stat-lbl">HAND POSITION (X & Y AXES)</span>
                 <span class="stat-val" id="handMetricCoords">X: 0.50 | Y: 0.50</span>
               </div>
               <div class="studio-stat-chip">
