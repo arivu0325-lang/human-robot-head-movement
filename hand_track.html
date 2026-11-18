@@ -11,10 +11,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <!-- Three.js for 3D Robot Head Visualizer -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <!-- MediaPipe Hands & Camera Utils for Real-Time Gesture Control -->
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body class="hand-studio-body-wrap">
   <div class="hand-studio-container">
@@ -163,12 +159,12 @@
                 <span class="stat-val" id="handMetricCoords">X: 0.50 (CENTER)</span>
               </div>
               <div class="studio-stat-chip">
-                <span class="stat-lbl">DETECTED GESTURE</span>
-                <span class="stat-val gesture-val" id="handValGesture">SEARCHING...</span>
+                <span class="stat-lbl">ACTIVE ZONE</span>
+                <span class="stat-val gesture-val" id="handValGesture">CENTER (HOME)</span>
               </div>
               <div class="studio-stat-chip">
-                <span class="stat-lbl">SERIAL DISPATCH</span>
-                <span class="stat-val serial-val" id="serialDispatchRate">20 Hz (STABLE)</span>
+                <span class="stat-lbl">ARDUINO SERIAL</span>
+                <span class="stat-val serial-val" id="serialDispatchRate">OFFLINE (CONNECT USB)</span>
               </div>
             </div>
 
@@ -178,10 +174,6 @@
                 <span class="toggle-slider-mini"></span>
                 <span class="toggle-text">Mirror Pan (Left / Right)</span>
               </label>
-              <div class="smoothing-wrap">
-                <span class="smoothing-lbl">Smoothing:</span>
-                <input type="range" id="rngSmoothing" min="1" max="9" value="4" class="slider-cyan-mini" title="Adjust hand movement smoothing">
-              </div>
               <button id="btnRestartCamera" class="btn btn-tiny" title="Restart / Refresh Camera">
                 📷 REFRESH CAM
               </button>
