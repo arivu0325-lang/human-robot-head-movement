@@ -2980,4 +2980,41 @@ input[type="range"]::-webkit-slider-thumb {
   white-space: nowrap;
 }
 
+.cam-pill {
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.45);
+  color: #00f0ff;
+}
+
+.cam-pill.robot-cam {
+  background: rgba(0, 255, 136, 0.16);
+  border: 1px solid #00ff88;
+  color: #00ff88;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.25);
+}
+
+.cam-pill.laptop-cam {
+  background: rgba(255, 184, 0, 0.14);
+  border: 1px solid rgba(255, 184, 0, 0.55);
+  color: #ffb800;
+}
+
+.cam-select-mini {
+  background: rgba(7, 11, 20, 0.9);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  max-width: 210px;
+  outline: none;
+  cursor: pointer;
+}
+
+.cam-select-mini:focus {
+  border-color: #00f0ff;
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.35);
+}
+
 

@@ -48,6 +48,17 @@ const state = {
     prevFrameData: null,
     offCanvas: null,
     offCtx: null
+  },
+
+  // Smart USB Camera Manager (Auto-enables Robot USB Cam & disables Laptop Cam)
+  camera: {
+    activeDeviceId: null,
+    activeLabel: '',
+    isRobotCam: false,
+    hasExternalCam: false,
+    preferredExternalId: null,
+    isSwitching: false,
+    deviceChangeTimer: null
   }
 };
 
@@ -80,6 +91,8 @@ const dom = {
   cameraViewport: document.getElementById('cameraViewport'),
   handWebcam: document.getElementById('handWebcam'),
   handCanvas: document.getElementById('handCanvas'),
+  camSourceBadge: document.getElementById('camSourceBadge'),
+  selCameraSource: document.getElementById('selCameraSource'),
   handStatusBadge: document.getElementById('handStatusBadge'),
   cameraGuide: document.getElementById('cameraGuide'),
   guideText: document.getElementById('guideText'),
@@ -169,6 +182,13 @@ async function openSerialPort(port) {
   state.isConnected = true;
   state.serialReadPromise = readSerialLoop();
   updateConnectionUI(true);
+
+  // Arduino is now connected: immediately enable Robot USB camera & disable laptop camera
+  if (state.hand.active) {
+    refreshAndSwitchCamera(true).catch((err) => console.warn('[CAMERA ARDUINO SWITCH]', err));
+  } else {
+    startHandTracking();
+  }
 }
 
 async function disconnectArduino() {
@@ -817,6 +837,227 @@ function runMotionFallbackFrame(ctx, video, w, h) {
   state.hand.prevFrameData = curImgData;
 }
 
+// ============================================================================
+// Smart USB Camera Manager (Auto-Enable Robot USB Cam & Disable Laptop Cam)
+// ============================================================================
+
+const BUILTIN_CAM_PATTERNS = [
+  'integrated', 'built-in', 'builtin', 'internal', 'laptop',
+  'facetime', 'truevision', 'user facing', 'hd user', 'front',
+  'acer', 'lenovo', 'dell', 'asus', 'hp ', 'surface',
+  'ir camera', 'windows hello', 'chicony', 'realtek', 'bison', 'quanta'
+];
+
+const EXTERNAL_USB_PATTERNS = [
+  'usb', 'uvc', 'external', 'robot', 'pc camera', 'hd camera',
+  'webcam', 'logitech', 'c270', 'c920', 'arducam', 'microdia',
+  'sonix', 'general', 'capture', '2.0', '3.0'
+];
+
+function isBuiltInLaptopCamera(label) {
+  const lower = (label || '').toLowerCase();
+  if (!lower) return false;
+  return BUILTIN_CAM_PATTERNS.some((kw) => lower.includes(kw));
+}
+
+function isExternalUsbCamera(label) {
+  const lower = (label || '').toLowerCase();
+  if (!lower) return false;
+  return EXTERNAL_USB_PATTERNS.some((kw) => lower.includes(kw)) && !isBuiltInLaptopCamera(lower);
+}
+
+/**
+ * Picks the best camera device:
+ * - Whenever another USB camera is connected (2+ cameras, or an external USB camera),
+ *   the built-in laptop camera is strictly DISABLED and the Robot USB camera is selected.
+ * - Falls back to the single available camera only if no external USB camera is attached.
+ */
+function chooseBestCamera(videoDevices) {
+  if (!videoDevices || videoDevices.length === 0) {
+    return { device: null, isRobotCam: false, hasExternal: false };
+  }
+
+  // Only 1 camera connected on the system
+  if (videoDevices.length === 1) {
+    const onlyCam = videoDevices[0];
+    const isExt = isExternalUsbCamera(onlyCam.label);
+    return { device: onlyCam, isRobotCam: isExt, hasExternal: isExt };
+  }
+
+  // 2+ cameras detected -> External USB Robot Camera is connected!
+  // Built-in laptop camera MUST be disabled and never chosen.
+  const nonBuiltInCams = videoDevices.filter((d) => !isBuiltInLaptopCamera(d.label));
+  const explicitUsbCams = videoDevices.filter((d) => isExternalUsbCamera(d.label));
+
+  // If user manually chose one of the external USB cameras and it is still plugged in
+  if (state.camera.preferredExternalId) {
+    const preferred = (nonBuiltInCams.length > 0 ? nonBuiltInCams : videoDevices).find(
+      (d) => d.deviceId === state.camera.preferredExternalId
+    );
+    if (preferred) {
+      return { device: preferred, isRobotCam: true, hasExternal: true };
+    }
+  }
+
+  if (explicitUsbCams.length > 0) {
+    return { device: explicitUsbCams[0], isRobotCam: true, hasExternal: true };
+  }
+  if (nonBuiltInCams.length > 0) {
+    return { device: nonBuiltInCams[0], isRobotCam: true, hasExternal: true };
+  }
+
+  // Fallback when OS hides labels or gives identical generic names:
+  // Windows lists built-in laptop webcam at index 0 and external USB cameras after it.
+  const externalFallback = videoDevices[videoDevices.length - 1];
+  return { device: externalFallback, isRobotCam: true, hasExternal: true };
+}
+
+function updateCameraSourceUI(videoDevices, selectedDevice, isRobotCam, hasExternal) {
+  if (dom.camSourceBadge) {
+    if (!selectedDevice) {
+      dom.camSourceBadge.textContent = '❌ NO CAMERA';
+      dom.camSourceBadge.className = 'studio-pill cam-pill';
+      dom.camSourceBadge.title = 'No camera detected';
+    } else if (isRobotCam) {
+      dom.camSourceBadge.textContent = '🤖 ROBOT USB CAM';
+      dom.camSourceBadge.className = 'studio-pill cam-pill robot-cam';
+      dom.camSourceBadge.title = `Active: ${selectedDevice.label || 'USB Camera'} (Laptop camera disabled)`;
+    } else {
+      dom.camSourceBadge.textContent = '💻 LAPTOP CAM';
+      dom.camSourceBadge.className = 'studio-pill cam-pill laptop-cam';
+      dom.camSourceBadge.title = `Active: ${selectedDevice.label || 'Built-in Camera'} — Connect Robot USB Camera to auto-switch`;
+    }
+  }
+
+  if (dom.selCameraSource) {
+    dom.selCameraSource.innerHTML = '';
+    if (!videoDevices || videoDevices.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No cameras detected';
+      dom.selCameraSource.appendChild(opt);
+      return;
+    }
+
+    videoDevices.forEach((dev, idx) => {
+      const opt = document.createElement('option');
+      opt.value = dev.deviceId;
+      const rawName = dev.label || `Camera ${idx + 1}`;
+      const isBuiltIn = isBuiltInLaptopCamera(rawName) || (hasExternal && videoDevices.length >= 2 && idx === 0 && dev.deviceId !== selectedDevice?.deviceId && !isExternalUsbCamera(rawName));
+
+      if (hasExternal && isBuiltIn) {
+        opt.disabled = true;
+        opt.textContent = `🚫 ${rawName} (Disabled)`;
+      } else if (hasExternal) {
+        opt.textContent = `🤖 ${rawName}`;
+      } else {
+        opt.textContent = `💻 ${rawName}`;
+      }
+
+      if (selectedDevice && dev.deviceId === selectedDevice.deviceId) {
+        opt.selected = true;
+      }
+      dom.selCameraSource.appendChild(opt);
+    });
+  }
+}
+
+function stopCameraStreamOnly() {
+  if (state.hand.stream) {
+    state.hand.stream.getTracks().forEach((t) => t.stop());
+    state.hand.stream = null;
+  }
+  if (dom.handWebcam) {
+    dom.handWebcam.srcObject = null;
+  }
+}
+
+async function openCameraStreamForDevice(targetDevice) {
+  // Always stop previous stream tracks first so laptop camera LED turns OFF immediately
+  stopCameraStreamOnly();
+
+  const videoConstraints =
+    targetDevice && targetDevice.deviceId
+      ? { deviceId: { exact: targetDevice.deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+      : { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' };
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
+  } catch (err) {
+    // Fallback without strict resolution constraints if the USB camera uses a different native mode
+    if (targetDevice && targetDevice.deviceId) {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: targetDevice.deviceId } },
+        audio: false
+      });
+    } else {
+      throw err;
+    }
+  }
+
+  state.hand.stream = stream;
+  state.hand.lastVideoTime = -1;
+
+  const activeTrack = stream.getVideoTracks()[0];
+  const settings = activeTrack ? activeTrack.getSettings() : {};
+  state.camera.activeDeviceId = settings.deviceId || (targetDevice ? targetDevice.deviceId : null);
+  state.camera.activeLabel = (activeTrack && activeTrack.label) || (targetDevice ? targetDevice.label : '');
+
+  if (dom.handWebcam) {
+    dom.handWebcam.srcObject = stream;
+    await dom.handWebcam.play();
+  }
+
+  return stream;
+}
+
+async function refreshAndSwitchCamera(forceRescan = false) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  if (state.camera.isSwitching) return;
+  state.camera.isSwitching = true;
+
+  try {
+    let devices = await navigator.mediaDevices.enumerateDevices();
+    let videoDevices = devices.filter((d) => d.kind === 'videoinput');
+
+    // If labels are hidden (first load before camera permission), request permission once
+    const labelsMissing = videoDevices.length > 0 && videoDevices.every((d) => !d.label);
+    if (labelsMissing || !state.hand.stream) {
+      const initialChoice = chooseBestCamera(videoDevices);
+      await openCameraStreamForDevice(initialChoice.device);
+
+      // Re-enumerate now that permission is granted and exact USB device labels are visible
+      devices = await navigator.mediaDevices.enumerateDevices();
+      videoDevices = devices.filter((d) => d.kind === 'videoinput');
+    }
+
+    const best = chooseBestCamera(videoDevices);
+    state.camera.isRobotCam = best.isRobotCam;
+    state.camera.hasExternalCam = best.hasExternal;
+
+    const needsSwitch =
+      best.device &&
+      (best.device.deviceId !== state.camera.activeDeviceId || !state.hand.stream || forceRescan);
+
+    if (needsSwitch && best.device) {
+      if (best.device.deviceId !== state.camera.activeDeviceId || !state.hand.stream) {
+        console.log(
+          `[CAMERA] Switching to ${best.isRobotCam ? 'ROBOT USB CAMERA' : 'LAPTOP CAMERA'}: ${best.device.label || best.device.deviceId}`
+        );
+        await openCameraStreamForDevice(best.device);
+      }
+    }
+
+    updateCameraSourceUI(videoDevices, best.device, best.isRobotCam, best.hasExternal);
+  } catch (err) {
+    console.error('[CAMERA SWITCH ERROR]', err);
+    throw err;
+  } finally {
+    state.camera.isSwitching = false;
+  }
+}
+
 async function startHandTracking() {
   if (state.hand.active) return;
 
@@ -836,20 +1077,11 @@ async function startHandTracking() {
   }
 
   try {
-    if (dom.guideText) dom.guideText.textContent = 'STARTING CAMERA...';
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-      audio: false
-    });
+    if (dom.guideText) dom.guideText.textContent = 'DETECTING ROBOT USB CAMERA...';
+    await refreshAndSwitchCamera(true);
 
-    state.hand.stream = stream;
     state.hand.active = true;
     state.hand.lastVideoTime = -1;
-
-    if (dom.handWebcam) {
-      dom.handWebcam.srcObject = stream;
-      await dom.handWebcam.play();
-    }
 
     if (dom.guideText) dom.guideText.textContent = 'MOVE HAND LEFT OR RIGHT TO TURN HEAD';
     updateTrackingBadge('SEARCHING HAND', 'searching');
@@ -867,13 +1099,8 @@ function stopHandTracking() {
     cancelAnimationFrame(state.hand.rafId);
     state.hand.rafId = null;
   }
-  if (state.hand.stream) {
-    state.hand.stream.getTracks().forEach((t) => t.stop());
-    state.hand.stream = null;
-  }
-  if (dom.handWebcam) {
-    dom.handWebcam.srcObject = null;
-  }
+  stopCameraStreamOnly();
+  state.camera.activeDeviceId = null;
 }
 
 function updateTrackingBadge(text, className) {
@@ -881,6 +1108,19 @@ function updateTrackingBadge(text, className) {
     dom.handStatusBadge.textContent = text;
     dom.handStatusBadge.className = `hand-badge ${className}`;
   }
+}
+
+// Automatically detect USB camera plug-in / unplug and disable laptop camera immediately
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    clearTimeout(state.camera.deviceChangeTimer);
+    state.camera.deviceChangeTimer = setTimeout(() => {
+      console.log('[CAMERA] USB device change detected — re-scanning cameras...');
+      if (state.hand.active) {
+        refreshAndSwitchCamera(true).catch((err) => console.warn('[CAMERA HOTPLUG]', err));
+      }
+    }, 350);
+  });
 }
 
 // ============================================================================
@@ -906,10 +1146,20 @@ window.addEventListener('DOMContentLoaded', () => {
       state.hand.mirrorX = e.target.checked;
     });
   }
+  if (dom.selCameraSource) {
+    dom.selCameraSource.addEventListener('change', (e) => {
+      const chosenId = e.target.value;
+      if (chosenId) {
+        state.camera.preferredExternalId = chosenId;
+        refreshAndSwitchCamera(true).catch((err) => console.warn('[CAMERA SELECT]', err));
+      }
+    });
+  }
   if (dom.btnRestartCamera) {
-    dom.btnRestartCamera.addEventListener('click', () => {
+    dom.btnRestartCamera.addEventListener('click', async () => {
+      state.camera.preferredExternalId = null;
       stopHandTracking();
-      startHandTracking();
+      await startHandTracking();
     });
   }
 
@@ -927,6 +1177,6 @@ window.addEventListener('DOMContentLoaded', () => {
   // 3. Auto-reconnect Web Serial if previously paired
   autoReconnectSerial();
 
-  // 4. Start Webcam Hand Tracking (Column 2)
+  // 4. Start Webcam Hand Tracking (Auto-selects Robot USB Camera & disables Laptop Camera)
   startHandTracking();
 });

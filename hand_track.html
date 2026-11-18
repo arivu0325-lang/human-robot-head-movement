@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -129,7 +129,8 @@
             <span class="col-icon">✋</span>
             <span>CAMERA PORTION // HAND TRACKING</span>
           </h2>
-          <div class="header-pills">
+          <div class="header-pills" style="display: flex; align-items: center; gap: 8px;">
+            <span id="camSourceBadge" class="studio-pill cam-pill">🔍 DETECTING CAM...</span>
             <span id="handStatusBadge" class="hand-badge searching">SEARCHING HAND</span>
           </div>
         </div>
@@ -174,7 +175,10 @@
                 <span class="toggle-slider-mini"></span>
                 <span class="toggle-text">Mirror Pan (Left / Right)</span>
               </label>
-              <button id="btnRestartCamera" class="btn btn-tiny" title="Restart / Refresh Camera">
+              <select id="selCameraSource" class="cam-select-mini" title="Active Camera Device (Auto-switches to Robot USB Camera when connected)">
+                <option value="">Detecting cameras...</option>
+              </select>
+              <button id="btnRestartCamera" class="btn btn-tiny" title="Rescan USB Cameras & Refresh Feed">
                 📷 REFRESH CAM
               </button>
             </div>
