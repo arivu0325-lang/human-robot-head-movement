@@ -44,6 +44,12 @@ const state = {
     lastTimestamp: 0,
     hasHand: false,
     mirrorX: false, // Hand Right -> Head Left, Hand Left -> Head Right
+    // Wait-for-movement anchor (head waits until hand actually moves left/right)
+    anchorX: null,
+    motionArmed: false,
+    lastHandSeenAt: 0,
+    moveThreshold: 0.075,
+    centerReturnBand: 0.04,
     // Offline fallback buffer
     prevFrameData: null,
     offCanvas: null,
@@ -324,6 +330,8 @@ function moveTo(zone, { forceSend = false } = {}) {
 }
 
 function centerHead() {
+  state.hand.anchorX = null;
+  state.hand.motionArmed = false;
   moveTo('HOME', { forceSend: true });
 }
 
@@ -574,40 +582,64 @@ async function initHandLandmarker() {
   return state.hand.handLandmarker;
 }
 
-function zoneFromMirroredX(x) {
-  // Hysteresis around 0.38 and 0.62 to avoid flicker at zone edges
-  if (state.currentZone === 'LEFT') {
-    if (x > 0.62) return 'RIGHT';
-    if (x > 0.43) return 'HOME';
-    return 'LEFT';
+/**
+ * Evaluates hand movement relative to its initial anchor position.
+ * - On initial hand detection: locks anchorX and returns null (NO head movement).
+ * - Waits until hand moves horizontally >= moveThreshold (~7.5% of frame width).
+ * - Once armed:
+ *     Hand moved RIGHT (+deltaX) -> LEFT  (or RIGHT if Flip Pan is checked)
+ *     Hand moved LEFT  (-deltaX) -> RIGHT (or LEFT if Flip Pan is checked)
+ *     Hand returned near anchor  -> HOME  (Center)
+ */
+function zoneFromHandMovement(visualX) {
+  if (state.hand.anchorX === null) {
+    state.hand.anchorX = visualX;
+    state.hand.motionArmed = false;
+    return null; // Wait for actual hand movement before moving head
   }
-  if (state.currentZone === 'RIGHT') {
-    if (x < 0.38) return 'LEFT';
-    if (x < 0.57) return 'HOME';
-    return 'RIGHT';
+
+  const deltaX = visualX - state.hand.anchorX;
+  const threshold = state.hand.moveThreshold;
+  const returnBand = state.hand.centerReturnBand;
+
+  if (!state.hand.motionArmed) {
+    if (Math.abs(deltaX) < threshold) {
+      return null; // Still stationary — do not move head yet
+    }
+    state.hand.motionArmed = true;
   }
-  if (x < 0.38) return 'LEFT';
-  if (x > 0.62) return 'RIGHT';
-  return 'HOME';
+
+  // Default (mirrorX = false): Hand Right (+deltaX) -> Head LEFT, Hand Left (-deltaX) -> Head RIGHT
+  const rightMoveZone = state.hand.mirrorX ? 'RIGHT' : 'LEFT';
+  const leftMoveZone = state.hand.mirrorX ? 'LEFT' : 'RIGHT';
+
+  if (deltaX >= threshold) return rightMoveZone;
+  if (deltaX <= -threshold) return leftMoveZone;
+  if (Math.abs(deltaX) <= returnBand) return 'HOME';
+
+  // Hysteresis band between returnBand and threshold: hold current zone cleanly
+  return state.currentZone;
 }
 
-function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone) {
-  const leftLine = w * 0.38;
-  const rightLine = w * 0.62;
+function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone, isWaitingForMove = false) {
+  const anchor = state.hand.anchorX !== null ? state.hand.anchorX : 0.5;
+  const th = state.hand.moveThreshold;
+  const leftLine = Math.max(24, Math.min(w - 48, (anchor - th) * w));
+  const rightLine = Math.max(leftLine + 24, Math.min(w - 24, (anchor + th) * w));
   const leftBoxZone = state.hand.mirrorX ? 'LEFT' : 'RIGHT';
   const rightBoxZone = state.hand.mirrorX ? 'RIGHT' : 'LEFT';
 
-  // Highlight active zone where hand is located
-  if (handPoint) {
+  // Highlight active zone only once hand has moved
+  if (handPoint && !isWaitingForMove && activeZone) {
     ctx.fillStyle = 'rgba(0, 240, 255, 0.14)';
     if (activeZone === leftBoxZone) ctx.fillRect(0, 0, leftLine, h);
     else if (activeZone === 'HOME') ctx.fillRect(leftLine, 0, rightLine - leftLine, h);
     else if (activeZone === rightBoxZone) ctx.fillRect(rightLine, 0, w - rightLine, h);
   }
 
-  // Zone divider dashed lines
+  // Zone divider dashed lines around the hand's anchor
   ctx.save();
-  ctx.strokeStyle = 'rgba(0, 240, 255, 0.42)';
+  ctx.strokeStyle = isWaitingForMove ? 'rgba(255, 184, 0, 0.55)' : 'rgba(0, 240, 255, 0.42)';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([6, 6]);
   ctx.beginPath();
@@ -616,17 +648,29 @@ function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone) {
   ctx.moveTo(rightLine, 0);
   ctx.lineTo(rightLine, h);
   ctx.stroke();
+
+  // Draw anchor reference line when hand is locked
+  if (state.hand.anchorX !== null) {
+    const ax = state.hand.anchorX * w;
+    ctx.strokeStyle = 'rgba(255, 184, 0, 0.35)';
+    ctx.setLineDash([3, 5]);
+    ctx.beginPath();
+    ctx.moveTo(ax, 38);
+    ctx.lineTo(ax, h);
+    ctx.stroke();
+  }
   ctx.setLineDash([]);
 
-  // Zone headers (reflect the robot head direction triggered by each side)
-  ctx.font = '700 13px Orbitron, sans-serif';
+  // Zone headers
+  ctx.font = '700 12px Orbitron, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = activeZone === leftBoxZone && handPoint ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
-  ctx.fillText(leftBoxZone === 'RIGHT' ? 'HEAD → RIGHT' : '← HEAD LEFT', leftLine / 2, 28);
-  ctx.fillStyle = activeZone === 'HOME' && handPoint ? '#00f0ff' : 'rgba(226, 232, 240, 0.72)';
-  ctx.fillText('CENTER', (leftLine + rightLine) / 2, 28);
-  ctx.fillStyle = activeZone === rightBoxZone && handPoint ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
-  ctx.fillText(rightBoxZone === 'LEFT' ? 'HEAD → LEFT' : 'HEAD RIGHT →', rightLine + (w - rightLine) / 2, 28);
+  const activeMoving = handPoint && !isWaitingForMove;
+  ctx.fillStyle = activeMoving && activeZone === leftBoxZone ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
+  ctx.fillText(leftBoxZone === 'RIGHT' ? 'HEAD → RIGHT' : '← HEAD LEFT', leftLine / 2, 26);
+  ctx.fillStyle = isWaitingForMove ? '#ffb800' : (activeMoving && activeZone === 'HOME' ? '#00f0ff' : 'rgba(226, 232, 240, 0.72)');
+  ctx.fillText(isWaitingForMove ? 'HOLD' : 'CENTER', (leftLine + rightLine) / 2, 26);
+  ctx.fillStyle = activeMoving && activeZone === rightBoxZone ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
+  ctx.fillText(rightBoxZone === 'LEFT' ? 'HEAD → LEFT' : 'HEAD RIGHT →', rightLine + (w - rightLine) / 2, 26);
   ctx.restore();
 
   // Draw hand skeleton if landmarks are available
@@ -638,15 +682,16 @@ function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone) {
   if (handPoint) {
     const px = handPoint.x * w;
     const py = handPoint.y * h;
+    const accent = isWaitingForMove ? '#ffb800' : '#00ff88';
 
     ctx.save();
     ctx.beginPath();
     ctx.arc(px, py, 18, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(0, 255, 136, 0.22)';
+    ctx.fillStyle = isWaitingForMove ? 'rgba(255, 184, 0, 0.22)' : 'rgba(0, 255, 136, 0.22)';
     ctx.fill();
     ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#00ff88';
-    ctx.shadowColor = '#00ff88';
+    ctx.strokeStyle = accent;
+    ctx.shadowColor = accent;
     ctx.shadowBlur = 10;
     ctx.stroke();
 
@@ -656,8 +701,11 @@ function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone) {
     ctx.fill();
 
     ctx.font = '700 11px JetBrains Mono, monospace';
-    ctx.fillStyle = '#00ff88';
-    ctx.fillText(`${TARGETS[activeZone].name.toUpperCase()} (${TARGETS[activeZone].angle}°)`, px + 24, py + 4);
+    ctx.fillStyle = accent;
+    const markerText = isWaitingForMove
+      ? 'WAIT FOR MOVE'
+      : `${TARGETS[activeZone].name.toUpperCase()} (${TARGETS[activeZone].angle}°)`;
+    ctx.fillText(markerText, px + 24, py + 4);
     ctx.restore();
   }
 }
@@ -735,6 +783,7 @@ function trackFrame() {
 
       if (result.landmarks && result.landmarks.length > 0) {
         state.hand.hasHand = true;
+        state.hand.lastHandSeenAt = now;
         if (dom.cameraGuide) dom.cameraGuide.classList.add('hidden');
 
         const lm = result.landmarks[0];
@@ -748,21 +797,34 @@ function trackFrame() {
         // Landmark 9 (middle finger MCP) is centered on the palm
         const palm = lm[9];
         const visualX = 1 - palm.x;
-        const controlX = state.hand.mirrorX ? visualX : palm.x;
-        const zone = zoneFromMirroredX(controlX);
+        const zone = zoneFromHandMovement(visualX);
 
-        moveTo(zone);
-        drawZoneOverlay(ctx, w, h, { x: visualX, y: palm.y }, mirroredLandmarks, zone);
+        if (zone === null) {
+          // Hand detected, waiting for actual left/right hand movement — do NOT turn head yet!
+          drawZoneOverlay(ctx, w, h, { x: visualX, y: palm.y }, mirroredLandmarks, state.currentZone, true);
+          updateTrackingBadge('HAND READY // MOVE', 'searching');
+          if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (HOLD)`;
+          if (dom.handValGesture) dom.handValGesture.textContent = 'WAITING FOR MOVE...';
+          if (dom.chipTrackState) dom.chipTrackState.textContent = 'WAIT FOR MOVEMENT';
+        } else {
+          moveTo(zone);
+          drawZoneOverlay(ctx, w, h, { x: visualX, y: palm.y }, mirroredLandmarks, zone, false);
 
-        const zoneLabel = TARGETS[zone].name.toUpperCase();
-        updateTrackingBadge(`TRACKING: ${zoneLabel}`, 'tracking');
-        if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (${zoneLabel})`;
-        if (dom.handValGesture) dom.handValGesture.textContent = `HAND → ${zoneLabel}`;
-        if (dom.chipTrackState) dom.chipTrackState.textContent = `FOLLOWING → ${zoneLabel}`;
+          const zoneLabel = TARGETS[zone].name.toUpperCase();
+          updateTrackingBadge(`TRACKING: ${zoneLabel}`, 'tracking');
+          if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (${zoneLabel})`;
+          if (dom.handValGesture) dom.handValGesture.textContent = `MOVED → ${zoneLabel}`;
+          if (dom.chipTrackState) dom.chipTrackState.textContent = `FOLLOWING → ${zoneLabel}`;
+        }
       } else {
         state.hand.hasHand = false;
+        // Reset anchor after hand leaves frame for > 400ms so next hand entry waits for movement again
+        if (state.hand.anchorX !== null && now - state.hand.lastHandSeenAt > 400) {
+          state.hand.anchorX = null;
+          state.hand.motionArmed = false;
+        }
         if (dom.cameraGuide) dom.cameraGuide.classList.remove('hidden');
-        drawZoneOverlay(ctx, w, h, null, null, state.currentZone);
+        drawZoneOverlay(ctx, w, h, null, null, state.currentZone, false);
         updateTrackingBadge('SEARCHING HAND', 'searching');
         if (dom.handValGesture) dom.handValGesture.textContent = 'SHOW HAND...';
         if (dom.chipTrackState) dom.chipTrackState.textContent = 'SEARCHING...';
@@ -813,25 +875,39 @@ function runMotionFallbackFrame(ctx, video, w, h) {
       }
     }
 
+    const now = performance.now();
     if (totalDiff > 1200) {
       const visualX = sumX / totalDiff / offW;
       const visualY = sumY / totalDiff / offH;
-      const controlX = state.hand.mirrorX ? visualX : 1 - visualX;
-      const zone = zoneFromMirroredX(controlX);
+      const zone = zoneFromHandMovement(visualX);
 
       state.hand.hasHand = true;
+      state.hand.lastHandSeenAt = now;
       if (dom.cameraGuide) dom.cameraGuide.classList.add('hidden');
-      moveTo(zone);
-      drawZoneOverlay(ctx, w, h, { x: visualX, y: visualY }, null, zone);
 
-      const zoneLabel = TARGETS[zone].name.toUpperCase();
-      updateTrackingBadge(`MOTION: ${zoneLabel}`, 'tracking');
-      if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (${zoneLabel})`;
-      if (dom.handValGesture) dom.handValGesture.textContent = `MOTION → ${zoneLabel}`;
-      if (dom.chipTrackState) dom.chipTrackState.textContent = `FOLLOWING → ${zoneLabel}`;
+      if (zone === null) {
+        drawZoneOverlay(ctx, w, h, { x: visualX, y: visualY }, null, state.currentZone, true);
+        updateTrackingBadge('HAND READY // MOVE', 'searching');
+        if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (HOLD)`;
+        if (dom.handValGesture) dom.handValGesture.textContent = 'WAITING FOR MOVE...';
+        if (dom.chipTrackState) dom.chipTrackState.textContent = 'WAIT FOR MOVEMENT';
+      } else {
+        moveTo(zone);
+        drawZoneOverlay(ctx, w, h, { x: visualX, y: visualY }, null, zone, false);
+
+        const zoneLabel = TARGETS[zone].name.toUpperCase();
+        updateTrackingBadge(`MOTION: ${zoneLabel}`, 'tracking');
+        if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (${zoneLabel})`;
+        if (dom.handValGesture) dom.handValGesture.textContent = `MOVED → ${zoneLabel}`;
+        if (dom.chipTrackState) dom.chipTrackState.textContent = `FOLLOWING → ${zoneLabel}`;
+      }
     } else {
       state.hand.hasHand = false;
-      drawZoneOverlay(ctx, w, h, null, null, state.currentZone);
+      if (state.hand.anchorX !== null && now - state.hand.lastHandSeenAt > 400) {
+        state.hand.anchorX = null;
+        state.hand.motionArmed = false;
+      }
+      drawZoneOverlay(ctx, w, h, null, null, state.currentZone, false);
       updateTrackingBadge('SEARCHING HAND', 'searching');
     }
   }
