@@ -43,7 +43,7 @@ const state = {
     lastVideoTime: -1,
     lastTimestamp: 0,
     hasHand: false,
-    mirrorX: true,
+    mirrorX: false, // Hand Right -> Head Left, Hand Left -> Head Right
     // Offline fallback buffer
     prevFrameData: null,
     offCanvas: null,
@@ -594,13 +594,15 @@ function zoneFromMirroredX(x) {
 function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone) {
   const leftLine = w * 0.38;
   const rightLine = w * 0.62;
+  const leftBoxZone = state.hand.mirrorX ? 'LEFT' : 'RIGHT';
+  const rightBoxZone = state.hand.mirrorX ? 'RIGHT' : 'LEFT';
 
-  // Highlight active zone when hand is visible
+  // Highlight active zone where hand is located
   if (handPoint) {
     ctx.fillStyle = 'rgba(0, 240, 255, 0.14)';
-    if (activeZone === 'LEFT') ctx.fillRect(0, 0, leftLine, h);
+    if (activeZone === leftBoxZone) ctx.fillRect(0, 0, leftLine, h);
     else if (activeZone === 'HOME') ctx.fillRect(leftLine, 0, rightLine - leftLine, h);
-    else if (activeZone === 'RIGHT') ctx.fillRect(rightLine, 0, w - rightLine, h);
+    else if (activeZone === rightBoxZone) ctx.fillRect(rightLine, 0, w - rightLine, h);
   }
 
   // Zone divider dashed lines
@@ -616,15 +618,15 @@ function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Zone headers
+  // Zone headers (reflect the robot head direction triggered by each side)
   ctx.font = '700 13px Orbitron, sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = activeZone === 'LEFT' && handPoint ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
-  ctx.fillText('← LEFT', leftLine / 2, 28);
+  ctx.fillStyle = activeZone === leftBoxZone && handPoint ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
+  ctx.fillText(leftBoxZone === 'RIGHT' ? 'HEAD → RIGHT' : '← HEAD LEFT', leftLine / 2, 28);
   ctx.fillStyle = activeZone === 'HOME' && handPoint ? '#00f0ff' : 'rgba(226, 232, 240, 0.72)';
   ctx.fillText('CENTER', (leftLine + rightLine) / 2, 28);
-  ctx.fillStyle = activeZone === 'RIGHT' && handPoint ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
-  ctx.fillText('RIGHT →', rightLine + (w - rightLine) / 2, 28);
+  ctx.fillStyle = activeZone === rightBoxZone && handPoint ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
+  ctx.fillText(rightBoxZone === 'LEFT' ? 'HEAD → LEFT' : 'HEAD RIGHT →', rightLine + (w - rightLine) / 2, 28);
   ctx.restore();
 
   // Draw hand skeleton if landmarks are available
