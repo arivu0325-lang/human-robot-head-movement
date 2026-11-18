@@ -83,11 +83,11 @@
 
             <div class="hud-readout top-left">
               <div class="readout-label">X-AXIS // PAN (LEFT / RIGHT)</div>
-              <div class="readout-value" id="hudYaw">0.0°</div>
+              <div class="readout-value" id="hudYaw">0° (CENTER)</div>
             </div>
             <div class="hud-readout top-right">
-              <div class="readout-label">Y-AXIS // TILT (UP / DOWN)</div>
-              <div class="readout-value" id="hudPitch">0.0°</div>
+              <div class="readout-label">Y-AXIS // TILT</div>
+              <div class="readout-value" id="hudPitch">LOCKED</div>
             </div>
             <div class="hud-readout bottom-left">
               <div class="readout-label">PIN 6 (PAN SERVO)</div>
@@ -95,11 +95,11 @@
             </div>
             <div class="hud-readout bottom-right">
               <div class="readout-label">PIN 9 (TILT SERVO)</div>
-              <div class="readout-value" id="servoTiltVal">90°</div>
+              <div class="readout-value" id="servoTiltVal">90° (LOCK)</div>
             </div>
 
             <div class="interaction-hint">
-              <span>🖱️ Drag to rotate 3D view | Hand movement moves X (Pan) and Y (Tilt)</span>
+              <span>🖱️ Drag to rotate 3D view | Move hand LEFT or RIGHT to turn head</span>
             </div>
           </div>
         </div>
@@ -109,11 +109,11 @@
           <div class="studio-face-stats">
             <div class="studio-stat-chip">
               <span class="stat-lbl">X-AXIS (PAN)</span>
-              <span class="stat-val" id="chipPanVal">90°</span>
+              <span class="stat-val" id="chipPanVal">90° (CENTER)</span>
             </div>
             <div class="studio-stat-chip">
               <span class="stat-lbl">Y-AXIS (TILT)</span>
-              <span class="stat-val" id="chipTiltVal">90°</span>
+              <span class="stat-val" id="chipTiltVal">LOCKED</span>
             </div>
             <div class="studio-stat-chip">
               <span class="stat-lbl">TRACKING STATE</span>
@@ -150,7 +150,7 @@
           <!-- Prompt Banner when camera not active or searching -->
           <div class="camera-center-guide" id="cameraGuide">
             <div class="guide-circle"></div>
-            <span class="guide-text" id="guideText">MOVE HAND UP/DOWN (Y) OR LEFT/RIGHT (X)</span>
+            <span class="guide-text" id="guideText">MOVE HAND LEFT OR RIGHT TO TURN HEAD</span>
           </div>
         </div>
 
@@ -159,8 +159,8 @@
           <div class="studio-camera-controls">
             <div class="metrics-grid">
               <div class="studio-stat-chip">
-                <span class="stat-lbl">HAND POSITION (X & Y AXES)</span>
-                <span class="stat-val" id="handMetricCoords">X: 0.50 | Y: 0.50</span>
+                <span class="stat-lbl">HAND X-POSITION</span>
+                <span class="stat-val" id="handMetricCoords">X: 0.50 (CENTER)</span>
               </div>
               <div class="studio-stat-chip">
                 <span class="stat-lbl">DETECTED GESTURE</span>
@@ -177,11 +177,6 @@
                 <input type="checkbox" id="chkHandMirror" checked>
                 <span class="toggle-slider-mini"></span>
                 <span class="toggle-text">Mirror Pan (Left / Right)</span>
-              </label>
-              <label class="studio-toggle">
-                <input type="checkbox" id="chkHandInvertY">
-                <span class="toggle-slider-mini"></span>
-                <span class="toggle-text">Invert Tilt (Up / Down)</span>
               </label>
               <div class="smoothing-wrap">
                 <span class="smoothing-lbl">Smoothing:</span>

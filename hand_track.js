@@ -107,7 +107,7 @@ async function autoReconnectSerial(retryCount = 0) {
       updateConnectionUI(true);
       console.log('[SERIAL] Connected to Arduino Uno successfully!');
       setTimeout(() => {
-        sendSerialData('HOME\n');
+        sendSerialData('PAN 90\n');
       }, 600);
       startSerialRead();
       return;
@@ -145,7 +145,7 @@ async function connectSerial() {
     updateConnectionUI(true);
 
     setTimeout(() => {
-      sendSerialData('HOME\n');
+      sendSerialData('PAN 90\n');
     }, 1000);
 
     startSerialRead();
@@ -406,22 +406,25 @@ function buildRobotModel() {
   robotHeadGroup.add(visorLight);
 }
 
-function update3DHeadAngles(panAngle, tiltAngle) {
-  // Pan (X-axis Yaw): 90° neutral. 140° is LEFT (+Yaw in Three.js). 50° is RIGHT (-Yaw in Three.js).
-  targetEulerYaw = ((panAngle - 90) * (Math.PI / 180));
-  // Tilt (Y-axis Pitch): 90° neutral. 140° is UP (-Pitch in Three.js). 65° is DOWN (+Pitch in Three.js).
-  targetEulerPitch = -((tiltAngle - 90) * (Math.PI / 180));
+function update3DHeadAngles(panAngle, tiltAngle = 90) {
+  // Pan (X-axis Yaw - Left / Right ONLY):
+  // 90° is CENTER (0 rad).
+  // 50° is RIGHT -> -((50 - 90)) = +40° rad -> nose points RIGHT (+X).
+  // 140° is LEFT -> -((140 - 90)) = -50° rad -> nose points LEFT (-X).
+  targetEulerYaw = -((panAngle - 90) * (Math.PI / 180));
+  // Tilt (Y-axis Pitch) is strictly locked at 0 (NO up/down movement)
+  targetEulerPitch = 0;
 
   // Update DOM HUD readouts
-  const relYaw = (panAngle - 90).toFixed(1);
-  const relPitch = (tiltAngle - 90).toFixed(1);
+  const relYaw = -(panAngle - 90); // Positive = RIGHT, Negative = LEFT
+  const dirTag = relYaw > 4 ? 'RIGHT' : (relYaw < -4 ? 'LEFT' : 'CENTER');
 
-  if (dom.hudYaw) dom.hudYaw.textContent = `${relYaw > 0 ? '+' : ''}${relYaw}°`;
-  if (dom.hudPitch) dom.hudPitch.textContent = `${relPitch > 0 ? '+' : ''}${relPitch}°`;
+  if (dom.hudYaw) dom.hudYaw.textContent = `${relYaw > 0 ? '+' : ''}${relYaw.toFixed(0)}° (${dirTag})`;
+  if (dom.hudPitch) dom.hudPitch.textContent = 'LOCKED';
   if (dom.servoPanVal) dom.servoPanVal.textContent = `${panAngle}°`;
-  if (dom.servoTiltVal) dom.servoTiltVal.textContent = `${tiltAngle}°`;
-  if (dom.chipPanVal) dom.chipPanVal.textContent = `${panAngle}°`;
-  if (dom.chipTiltVal) dom.chipTiltVal.textContent = `${tiltAngle}°`;
+  if (dom.servoTiltVal) dom.servoTiltVal.textContent = '90° (LOCK)';
+  if (dom.chipPanVal) dom.chipPanVal.textContent = `${panAngle}° (${dirTag})`;
+  if (dom.chipTiltVal) dom.chipTiltVal.textContent = 'LOCKED';
 }
 
 function animate() {
@@ -629,7 +632,8 @@ function onMediaPipeHandResults(results) {
     drawTargetReticle(ctx, palmX * canvas.width, palmY * canvas.height, gesture.name);
 
     if (dom.handMetricCoords) {
-      dom.handMetricCoords.textContent = `X: ${palmX.toFixed(2)} | Y: ${palmY.toFixed(2)}`;
+      const dirTxt = palmX > 0.54 ? 'RIGHT' : (palmX < 0.46 ? 'LEFT' : 'CENTER');
+      dom.handMetricCoords.textContent = `X: ${palmX.toFixed(2)} (${dirTxt})`;
     }
     if (dom.handValGesture) {
       dom.handValGesture.textContent = gesture.name;
@@ -678,69 +682,54 @@ function analyzeHandGesture(lm) {
 }
 
 function computeAndApplyKinematics(visualX, visualY) {
-  // Active tracking area with padding (0.12 to 0.88 for natural comfortable arm reach)
+  // Active horizontal tracking window (0.12 to 0.88 for comfortable arm reach)
   const normX = Math.max(0, Math.min(1, (visualX - 0.12) / 0.76));
-  const normY = Math.max(0, Math.min(1, (visualY - 0.12) / 0.76));
 
   // =========================================================================
-  // X-AXIS KINEMATICS: PAN (PIN 6 SERVO) - LEFT & RIGHT
-  // - Neutral Hand Center (normX = 0.5) -> Pan = 90° (CENTER)
-  // - Hand moving LEFT (normX < 0.5) -> Pan increases from 90° to 140° (LEFT)
-  // - Hand moving RIGHT (normX > 0.5) -> Pan decreases from 90° to 50° (RIGHT)
+  // X-AXIS ONLY: LEFT & RIGHT PAN (PIN 6 SERVO) - NO UP/DOWN MOVEMENT
+  // - Hand Center (normX = 0.5) -> Pan = 90° (CENTER)
+  // - Hand Right  (normX -> 1.0) -> Pan decreases from 90° to 50° (RIGHT)
+  // - Hand Left   (normX -> 0.0) -> Pan increases from 90° to 140° (LEFT)
   // =========================================================================
   let targetPan;
   if (state.hand.mirrorX) {
-    targetPan = Math.round(90 + (0.5 - normX) * 2 * (140 - 90));
+    if (normX >= 0.5) {
+      // Hand on RIGHT side -> move from 90° down to 50° (THIRD_RIGHT)
+      const rightRatio = (normX - 0.5) / 0.5;
+      targetPan = Math.round(90 - rightRatio * (90 - 50));
+    } else {
+      // Hand on LEFT side -> move from 90° up to 140° (THIRD_LEFT)
+      const leftRatio = (0.5 - normX) / 0.5;
+      targetPan = Math.round(90 + leftRatio * (140 - 90));
+    }
   } else {
-    targetPan = Math.round(90 + (normX - 0.5) * 2 * (140 - 90));
+    if (normX >= 0.5) {
+      const rightRatio = (normX - 0.5) / 0.5;
+      targetPan = Math.round(90 + rightRatio * (140 - 90));
+    } else {
+      const leftRatio = (0.5 - normX) / 0.5;
+      targetPan = Math.round(90 - leftRatio * (90 - 50));
+    }
   }
   targetPan = Math.max(50, Math.min(140, targetPan));
 
-  // =========================================================================
-  // Y-AXIS KINEMATICS: TILT (PIN 9 SERVO) - UP & DOWN
-  // - Neutral Hand Center (normY = 0.5) -> Tilt = 90° (CENTER)
-  // - Hand moving UP (normY < 0.5) -> Tilt increases from 90° to 140° (UP)
-  // - Hand moving DOWN (normY > 0.5) -> Tilt decreases from 90° to 65° (DOWN)
-  // =========================================================================
-  let targetTilt;
-  if (!state.hand.invertY) {
-    if (normY <= 0.5) {
-      // Hand is UP
-      const upRatio = (0.5 - normY) / 0.5; // 0 to 1
-      targetTilt = Math.round(90 + upRatio * (140 - 90));
-    } else {
-      // Hand is DOWN
-      const downRatio = (normY - 0.5) / 0.5; // 0 to 1
-      targetTilt = Math.round(90 - downRatio * (90 - 65));
-    }
-  } else {
-    // Invert Y
-    if (normY <= 0.5) {
-      const upRatio = (0.5 - normY) / 0.5;
-      targetTilt = Math.round(90 - upRatio * (90 - 65));
-    } else {
-      const downRatio = (normY - 0.5) / 0.5;
-      targetTilt = Math.round(90 + downRatio * (140 - 90));
-    }
-  }
-  targetTilt = Math.max(65, Math.min(140, targetTilt));
+  // Y-AXIS (UP / DOWN) IS DISABLED: Lock Tilt strictly at 90° neutral
+  state.hand.smoothedTilt = 90;
+  state.tilt = 90;
 
-  // Fluid Lerp smoothing for zero-jitter tracking
+  // Fluid Lerp smoothing for horizontal Pan
   state.hand.smoothedPan += (targetPan - state.hand.smoothedPan) * state.hand.smoothing;
-  state.hand.smoothedTilt += (targetTilt - state.hand.smoothedTilt) * state.hand.smoothing;
-
   state.pan = Math.round(state.hand.smoothedPan);
-  state.tilt = Math.round(state.hand.smoothedTilt);
 
-  // Update 3D Face Viewport (Column 1)
-  update3DHeadAngles(state.pan, state.tilt);
+  // Update 3D Face Viewport (Column 1 - Left / Right ONLY)
+  update3DHeadAngles(state.pan, 90);
 
-  // Throttled Serial Transmission to Arduino Uno (Pin 6 Pan & Pin 9 Tilt)
+  // Throttled Serial Transmission to Arduino Uno (Pin 6 Pan ONLY - no Tilt)
   const now = performance.now();
   if (now - state.hand.lastSerialDispatch >= 50) { // 20 Hz stable rate
     state.hand.lastSerialDispatch = now;
     if (state.isConnected) {
-      sendSerialData(`TILT ${state.tilt}\nPAN ${state.pan}\n`);
+      sendSerialData(`PAN ${state.pan}\n`);
     }
   }
 }
@@ -752,7 +741,7 @@ function centerHead() {
   state.tilt = 90;
   update3DHeadAngles(90, 90);
   if (state.isConnected) {
-    sendSerialData('HOME\n');
+    sendSerialData('PAN 90\n');
   }
 }
 
@@ -903,21 +892,24 @@ function drawTargetReticle(ctx, x, y, label) {
 
   const cx = ctx.canvas.width / 2;
   const cy = ctx.canvas.height / 2;
+  // Horizontal X-axis rail from center to hand X position
   ctx.beginPath();
   ctx.setLineDash([4, 4]);
-  ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = 'rgba(0, 240, 255, 0.55)';
+  ctx.lineWidth = 2;
   ctx.moveTo(cx, cy);
+  ctx.lineTo(x, cy);
   ctx.lineTo(x, y);
   ctx.stroke();
   ctx.setLineDash([]);
 
+  const dirTag = state.pan < 86 ? 'RIGHT' : (state.pan > 94 ? 'LEFT' : 'CENTER');
   ctx.font = '11px JetBrains Mono, monospace';
   ctx.fillStyle = '#00ff88';
   ctx.fillText(label, x + 28, y - 8);
   ctx.font = '10px JetBrains Mono, monospace';
   ctx.fillStyle = '#00f0ff';
-  ctx.fillText(`X:${state.pan}° Y:${state.tilt}°`, x + 28, y + 8);
+  ctx.fillText(`PAN: ${state.pan}° (${dirTag})`, x + 28, y + 8);
 
   ctx.restore();
 }
