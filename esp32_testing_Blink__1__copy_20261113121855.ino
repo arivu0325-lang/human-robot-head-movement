@@ -8,6 +8,7 @@
     - Pin 6  : Third Servo   (Pan Left / Right / Home)
     - Pin 2  : Pulse Servo 1 (Heartbeat Pulse SG90)
     - Pin 12 : Pulse Servo 2 (Heartbeat Pulse SG90)
+    - Pin 4  : Relay Blower  (Air Blower / Breath Motor)
 
   Baud Rate: 9600 Baud (Works with Web Serial UI & Serial Monitor)
 
@@ -23,7 +24,8 @@
     - PULSE OFF             -> Two SG90 pulse servos stop
     - TILT <angle>          -> Direct positioning of Main Servo (0-180 deg)
     - PAN <angle>           -> Direct positioning of Third Servo (0-180 deg)
-    - BLOW                  -> Triggers forward gesture & wind pulse
+    - 1 / BLOW ON / BLOW    -> Blower Relay ON (Pin 4 HIGH), mouth sweep & wind pulse
+    - 0 / BLOW OFF          -> Blower Relay OFF (Pin 4 LOW), stops mouth & pulse
     - ESTOP                 -> Emergency stop all active loops & return home
   =============================================================================
 */
@@ -89,6 +91,11 @@ bool pulseActive = false;
 int pulsePhase = 0;
 unsigned long pulseTimer = 0;
 
+// =====================================
+// RELAY (PIN 4 - AIR BLOWER / BREATH)
+// =====================================
+const int RELAY_PIN = 4;
+
 // SERIAL COMMAND BUFFER
 String command = "";
 
@@ -114,6 +121,10 @@ void setup() {
   pulseServo1.attach(2);
   pulseServo2.attach(12);
 
+  // RELAY SETUP (PIN 4 - BLOWER)
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);
+
   mainServo.write(90);
   mouthServo.write(90);
   thirdServo.write(90);
@@ -126,6 +137,8 @@ void setup() {
   Serial.println("MOUTH ON / MOUTH OFF");
   Serial.println("RIGHT / LEFT / HOME");
   Serial.println("PULSE ON / PULSE OFF");
+  Serial.println("1 / BLOW ON - BLOWER ON (RELAY PIN 4)");
+  Serial.println("0 / BLOW OFF - BLOWER OFF (RELAY PIN 4)");
 }
 
 void loop() {
@@ -183,21 +196,40 @@ void loop() {
         Serial.print("PULSE STOPPED AT: ");
         Serial.println(pulseAngle);
       }
-      else if (command == "BLOW") {
+      // =====================================
+      // BLOWER ON (RELAY PIN 4 HIGH)
+      // COMMANDS: 1, BLOW, BLOW ON, BREATH ON
+      // =====================================
+      else if (command == "1" || command == "BLOW" || command == "BLOW ON" || command == "BREATH ON") {
+        digitalWrite(RELAY_PIN, HIGH);
         mouthActive = true;
         pulseActive = true;
         pulsePhase = 0;
         pulseTimer = millis();
-        Serial.println("AIR BLOW TRIGGERED");
+        Serial.println("BREATH ON - RELAY ON");
+      }
+      // =====================================
+      // BLOWER OFF (RELAY PIN 4 LOW)
+      // COMMANDS: 0, BLOW OFF, BREATH OFF
+      // =====================================
+      else if (command == "0" || command == "BLOW OFF" || command == "BREATH OFF") {
+        digitalWrite(RELAY_PIN, LOW);
+        mouthActive = false;
+        pulseActive = false;
+        mouthServo.write(mouthAngle);
+        pulseServo1.write(0);
+        pulseServo2.write(0);
+        Serial.println("BREATH OFF - RELAY OFF");
       }
       else if (command == "ESTOP") {
+        digitalWrite(RELAY_PIN, LOW);
         mouthActive = false;
         pulseActive = false;
         mainTarget = MAIN_HOME;
         thirdTarget = THIRD_HOME;
         pulseServo1.write(0);
         pulseServo2.write(0);
-        Serial.println("EMERGENCY STOPPED");
+        Serial.println("EMERGENCY STOPPED - RELAY OFF");
       }
       else if (command.startsWith("TILT ")) {
         int val = command.substring(5).toInt();

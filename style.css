@@ -1274,7 +1274,14 @@ input[type="range"]::-webkit-slider-thumb {
   box-shadow: 0 0 18px rgba(255, 0, 85, 0.5) !important;
 }
 
-/* Air Blow Action Button */
+/* Air Blow Action Button Group */
+.blow-btn-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: 100%;
+}
+
 .btn-blow {
   background: linear-gradient(135deg, rgba(0, 240, 255, 0.15) 0%, rgba(0, 168, 255, 0.08) 100%);
   border: 1px solid rgba(0, 240, 255, 0.5);
@@ -1296,19 +1303,51 @@ input[type="range"]::-webkit-slider-thumb {
   box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
 }
 
-.btn-blow:hover {
-  background: linear-gradient(135deg, rgba(0, 240, 255, 0.3) 0%, rgba(0, 168, 255, 0.2) 100%);
+.btn-blow-on {
+  border-color: rgba(0, 240, 255, 0.55);
+  color: #00f0ff;
+}
+
+.btn-blow-on:hover {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.35) 0%, rgba(0, 168, 255, 0.22) 100%);
   border-color: #00f0ff;
   color: #ffffff;
-  box-shadow: 0 0 20px rgba(0, 240, 255, 0.45);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.55);
   transform: translateY(-1px);
 }
 
-.btn-blow:active, .btn-blow.blowing {
-  background: #00f0ff;
-  color: #02050a;
-  transform: scale(0.97);
-  box-shadow: 0 0 25px rgba(0, 240, 255, 0.7);
+.btn-blow-on:active,
+.btn-blow-on.blowing,
+.btn-blow-on.active {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.45) 0%, rgba(0, 168, 255, 0.3) 100%) !important;
+  border-color: #00f0ff !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 25px rgba(0, 240, 255, 0.8) !important;
+  transform: scale(0.98);
+}
+
+.btn-blow-off {
+  background: linear-gradient(135deg, rgba(255, 59, 92, 0.12) 0%, rgba(255, 0, 85, 0.06) 100%);
+  border-color: rgba(255, 59, 92, 0.45);
+  color: #ff6b8b;
+  box-shadow: 0 0 10px rgba(255, 59, 92, 0.12);
+}
+
+.btn-blow-off:hover {
+  background: linear-gradient(135deg, rgba(255, 59, 92, 0.28) 0%, rgba(255, 0, 85, 0.18) 100%);
+  border-color: #ff3b5c;
+  color: #ffffff;
+  box-shadow: 0 0 20px rgba(255, 59, 92, 0.45);
+  transform: translateY(-1px);
+}
+
+.btn-blow-off:active,
+.btn-blow-off.active {
+  background: #ff3b5c !important;
+  border-color: #ff3b5c !important;
+  color: #02050a !important;
+  box-shadow: 0 0 25px rgba(255, 59, 92, 0.8) !important;
+  transform: scale(0.98);
 }
 
 .btn-blow-icon {
@@ -1317,8 +1356,13 @@ input[type="range"]::-webkit-slider-thumb {
   transition: transform 0.2s ease;
 }
 
-.btn-blow:hover .btn-blow-icon, .btn-blow.blowing .btn-blow-icon {
+.btn-blow-on:hover .btn-blow-icon,
+.btn-blow-on.blowing .btn-blow-icon {
   transform: scale(1.25) rotate(-10deg);
+}
+
+.btn-blow-off:hover .btn-blow-icon {
+  transform: scale(1.2) rotate(10deg);
 }
 
 .btn-blow-preset {

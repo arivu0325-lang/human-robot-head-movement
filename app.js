@@ -59,6 +59,9 @@ const state = {
   // Robotic Mouth Actuator (Pin 3)
   mouthActive: false,
 
+  // Air Blow Actuator (Mouth sweep + Pulse rhythm)
+  blowActive: false,
+
   // Animation / Patrol state
   activeAnimation: null
 };
@@ -144,6 +147,8 @@ const dom = {
   mouthToggleTitle: document.getElementById('mouthToggleTitle'),
   mouthToggleSub: document.getElementById('mouthToggleSub'),
   btnBlow: document.getElementById('btnBlow'),
+  btnBlowOn: document.getElementById('btnBlowOn'),
+  btnBlowOff: document.getElementById('btnBlowOff'),
   btnPresetBlow: document.getElementById('btnPresetBlow'),
   speedPresets: document.querySelectorAll('.pill-speed'),
 
@@ -683,39 +688,88 @@ function triggerNeckPulse() {
 }
 
 /**
- * Triggers realistic Air Blow / Wind Exhale action.
- * Moves the head forward, shoots 3D wind puff rings, plays whoosh audio,
- * and sends BLOW command to Arduino/ESP32.
+ * Starts continuous Air Blow / Wind Exhale action (BLOW ON).
+ * Moves the head forward, shoots continuous 3D wind puff rings, plays whoosh audio,
+ * and sends BLOW ON command to Arduino/ESP32.
  */
-function triggerBlowAction() {
+function startBlowAction() {
   if (state.activeAnimation && state.activeAnimation !== 'BLOW') {
     stopAnimation();
   }
 
+  state.blowActive = true;
   blowActionActive = true;
   blowStartTime = performance.now();
 
-  [dom.btnBlow, dom.btnPresetBlow].forEach(btn => {
-    if (btn) {
-      btn.classList.add('blowing');
-      setTimeout(() => {
-        if (btn) btn.classList.remove('blowing');
-      }, BLOW_DURATION);
-    }
-  });
+  if (dom.btnBlowOn) dom.btnBlowOn.classList.add('active', 'blowing');
+  if (dom.btnBlowOff) dom.btnBlowOff.classList.remove('active');
+  if (dom.btnBlow) dom.btnBlow.classList.add('blowing');
+  if (dom.btnPresetBlow) dom.btnPresetBlow.classList.add('blowing');
 
   playBlowSound();
 
   sendCommand({
-    cmd: 'BLOW',
-    action: 'BLOW_AIR',
-    duration: BLOW_DURATION,
+    cmd: 'BLOW ON',
+    action: 'BLOW_ON',
     pan: state.pan,
     tilt: state.tilt,
     timestamp: Date.now()
   });
 
-  log('[ACTION] 💨 Triggering BLOW action...', 'tx');
+  log('[ACTION] 💨 Air Blow turned ON (Continuous)', 'tx');
+}
+
+/**
+ * Stops Air Blow action (BLOW OFF).
+ * Resets 3D wind rings, returns head tilt to neutral,
+ * and sends BLOW OFF command to Arduino/ESP32.
+ */
+function stopBlowAction() {
+  state.blowActive = false;
+  blowActionActive = false;
+
+  if (dom.btnBlowOn) dom.btnBlowOn.classList.remove('active', 'blowing');
+  if (dom.btnBlowOff) {
+    dom.btnBlowOff.classList.add('active');
+    setTimeout(() => {
+      if (dom.btnBlowOff) dom.btnBlowOff.classList.remove('active');
+    }, 600);
+  }
+  if (dom.btnBlow) dom.btnBlow.classList.remove('blowing');
+  if (dom.btnPresetBlow) dom.btnPresetBlow.classList.remove('blowing');
+
+  if (blowRings) {
+    blowRings.forEach(r => {
+      r.material.opacity = 0;
+      r.scale.set(1, 1, 1);
+      r.position.z = 0;
+    });
+  }
+
+  if (robotHeadGroup) {
+    robotHeadGroup.rotation.x = currentEulerPitch;
+  }
+
+  sendCommand({
+    cmd: 'BLOW OFF',
+    action: 'BLOW_OFF',
+    pan: state.pan,
+    tilt: state.tilt,
+    timestamp: Date.now()
+  });
+
+  log('[ACTION] 🛑 Air Blow turned OFF', 'warn');
+}
+
+/**
+ * Toggle / One-shot trigger compatibility
+ */
+function triggerBlowAction() {
+  if (state.blowActive) {
+    stopBlowAction();
+  } else {
+    startBlowAction();
+  }
 }
 
 function playBlowSound() {
@@ -923,8 +977,20 @@ if (dom.btnMouthToggle) {
   });
 }
 
+if (dom.btnBlowOn) {
+  dom.btnBlowOn.addEventListener('click', () => {
+    startBlowAction();
+  });
+}
+
+if (dom.btnBlowOff) {
+  dom.btnBlowOff.addEventListener('click', () => {
+    stopBlowAction();
+  });
+}
+
 [dom.btnBlow, dom.btnPresetBlow].forEach(btn => {
-  if (btn) {
+  if (btn && btn !== dom.btnBlowOn && btn !== dom.btnBlowOff) {
     btn.addEventListener('click', () => {
       triggerBlowAction();
     });
@@ -1244,8 +1310,13 @@ function sendCommand(payload) {
     } else if (payload.cmd === 'PULSE') {
       sendSerialData('PULSE ON\n');
       setTimeout(() => sendSerialData('PULSE OFF\n'), 800);
-    } else if (payload.cmd === 'BLOW') {
-      sendSerialData('BLOW\n');
+    } else if (payload.cmd === 'BLOW' || payload.cmd === 'BLOW ON' || payload.action === 'BLOW_ON') {
+      sendSerialData('BLOW ON\n1\n');
+    } else if (payload.cmd === 'BLOW OFF' || payload.action === 'BLOW_OFF') {
+      sendSerialData('BLOW OFF\n0\n');
+      setTimeout(() => {
+        sendSerialData('MOUTH OFF\nPULSE OFF\n');
+      }, 50);
     } else if (payload.cmd === 'ESTOP') {
       sendSerialData('ESTOP\n');
     } else if (payload.action === 'UP') {
@@ -1898,17 +1969,22 @@ function animate() {
   // Handle Dynamic Air Blow / Wind Puff Animation
   if (blowActionActive) {
     const elapsed = now - blowStartTime;
-    const progress = elapsed / BLOW_DURATION;
 
-    if (progress >= 1) {
+    if (!state.blowActive && elapsed >= BLOW_DURATION) {
       blowActionActive = false;
       blowRings.forEach(r => {
         r.material.opacity = 0;
         r.scale.set(1, 1, 1);
         r.position.z = 0;
       });
+      if (robotHeadGroup) {
+        robotHeadGroup.rotation.x = currentEulerPitch;
+      }
     } else {
+      const loopElapsed = state.blowActive ? (elapsed % BLOW_DURATION) : elapsed;
+      const progress = loopElapsed / BLOW_DURATION;
       const wave = Math.sin(progress * Math.PI);
+
       // Head tilts forward slightly during blow gesture
       if (robotHeadGroup) {
         robotHeadGroup.rotation.x = currentEulerPitch - wave * 0.14;
@@ -2515,9 +2591,17 @@ function handleVoiceCommand(rawText) {
   }
 
   // 4. Special Actions
-  if (text.includes('blow') || text.includes('blow air') || text.includes('wind')) {
-    triggerBlowAction();
-    log('[VOICE COMMAND] 💨 Air blow triggered', 'rx');
+  if (text.includes('blow off') || text.includes('stop blow') || text.includes('wind off')) {
+    stopBlowAction();
+    speakVoiceFeedback("Air blow off");
+    log('[VOICE COMMAND] 🛑 Air blow turned OFF', 'rx');
+    return;
+  }
+
+  if (text.includes('blow') || text.includes('blow on') || text.includes('blow air') || text.includes('wind')) {
+    startBlowAction();
+    speakVoiceFeedback("Air blow on");
+    log('[VOICE COMMAND] 💨 Air blow turned ON', 'rx');
     return;
   }
 

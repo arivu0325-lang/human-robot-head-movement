@@ -90,6 +90,7 @@ d:\head movement\
 | **Mouth Servo (MOUTH ON / OFF)** | Orange / Yellow | **PIN 3** | 5V | GND |
 | **Pulse Servo 1 (Heartbeat SG90)** | Orange / Yellow | **PIN 2** | 5V | GND |
 | **Pulse Servo 2 (Heartbeat SG90)** | Orange / Yellow | **PIN 12** | 5V | GND |
+| **Air Blower / Breath Motor (Relay)** | Relay Signal (IN) | **PIN 4** | 5V / External | GND |
 
 ### 🎛️ Serial Command Reference (9600 Baud)
 | Command | Action | Servo Target |
@@ -103,11 +104,13 @@ d:\head movement\
 | `MOUTH OFF` | Stops Mouth Movement | Pin 3 holds position |
 | `PULSE ON` | Activates Dual SG90 Heartbeat Pulse | Pins 2 & 12 pulse 0° - 20° |
 | `PULSE OFF` | Deactivates Pulse | Pins 2 & 12 hold 0° |
-| `ESTOP` | Emergency Stop | Halts all active loops & homes servos |
+| `ESTOP` | Emergency Stop | Halts all active loops, relay OFF, homes servos |
 | `POS <pan> <tilt>` | Real-Time Hand Tracking / Dual Coordinate | Pin 6 -> <pan>°, Pin 9 -> <tilt>° |
 | `TILT <angle>` | Direct Tilt Positioning (0-180°) | Pin 9 -> <angle>° |
 | `PAN <angle>` | Direct Pan Positioning (0-180°) | Pin 6 -> <angle>° |
-| `BLOW` | Wind Exhale Gesture & Pulse | Pin 3 sweep & Pins 2, 12 pulse |
+| `1` or `BLOW ON` | Blower Relay ON, Mouth Sweep & Wind Pulse | Pin 4 HIGH, Pin 3 sweep, Pins 2 & 12 pulse |
+| `0` or `BLOW OFF` | Blower Relay OFF, Mouth & Pulse Stop | Pin 4 LOW, Pin 3 hold, Pins 2 & 12 to 0° |
+| `BLOW` | Legacy Air Blow Trigger | Pin 4 HIGH, Pin 3 sweep, Pins 2 & 12 pulse |
 
 > ⚠️ **Important**: Always power servos from an external 5V-6V power supply (2A-4A) and connect the ground (GND) of the external power supply to the Arduino GND.
 
