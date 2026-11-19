@@ -2885,23 +2885,20 @@ function onMediaPipeHandResults(results) {
     // Draw Tracking Reticle & Hologram line
     drawTargetReticle(ctx, palmX * canvas.width, palmY * canvas.height, gesture.name);
 
-    if (gesture.isFist) {
-      updateHandStatusBadge('FIST // LOCKED', 'locked');
-      if (dom.handValGesture) dom.handValGesture.textContent = '✊ FIST (HOLD)';
+    if (gesture.isCenter || gesture.isFist || gesture.isOne) {
+      const badgeText = gesture.isFist ? 'FIST // CENTER' : (gesture.isOne ? 'SHOW 1 // CENTER' : 'CENTER');
+      updateHandStatusBadge(badgeText, 'tracking');
+      if (dom.handValGesture) dom.handValGesture.textContent = gesture.name;
+      // Quick return to Center / Home (90°, 90°)
+      setHeadPosition(90, 90, 'CENTER');
+    } else if (gesture.isPinch) {
+      updateHandStatusBadge('PINCH // BLOW', 'active');
+      if (dom.handValGesture) dom.handValGesture.textContent = gesture.name;
+      triggerBlowAction();
     } else {
       updateHandStatusBadge('TRACKING', 'tracking');
       if (dom.handValGesture) dom.handValGesture.textContent = gesture.name;
-
-      if (gesture.isPeace) {
-        // Quick center on Peace sign
-        setHeadPosition(90, 90, 'CENTER');
-      } else if (gesture.isPinch) {
-        // Pinch triggers blow
-        triggerBlowAction();
-      } else {
-        // Map palmX, palmY to Head Pan/Tilt
-        computeAndApplyHandKinematics(palmX, palmY);
-      }
+      computeAndApplyHandKinematics(palmX, palmY);
     }
   } else {
     handTrack.hasHand = false;
@@ -2912,14 +2909,26 @@ function onMediaPipeHandResults(results) {
 }
 
 function analyzeHandGesture(lm) {
-  const indexExtended = lm[8].y < lm[6].y;
-  const middleExtended = lm[12].y < lm[10].y;
-  const ringExtended = lm[16].y < lm[14].y;
-  const pinkyExtended = lm[20].y < lm[18].y;
+  const dist = (i, j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
+
+  const indexExtended = (dist(8, 0) > dist(6, 0) * 1.10) && (lm[8].y < lm[6].y || dist(8, 0) > dist(6, 0) * 1.25);
+  const middleExtended = (dist(12, 0) > dist(10, 0) * 1.10) && (lm[12].y < lm[10].y || dist(12, 0) > dist(10, 0) * 1.25);
+  const ringExtended = (dist(16, 0) > dist(14, 0) * 1.10) && (lm[16].y < lm[14].y || dist(16, 0) > dist(14, 0) * 1.25);
+  const pinkyExtended = (dist(20, 0) > dist(18, 0) * 1.10) && (lm[20].y < lm[18].y || dist(20, 0) > dist(18, 0) * 1.25);
   const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
 
-  if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
-    return { isFist: true, name: '✊ FIST (HOLD)' };
+  // 1. Closed hand / Fist: all 4 fingers folded
+  const isFist = !indexExtended && !middleExtended && !ringExtended && !pinkyExtended;
+
+  // 2. Shows 1: index finger extended, middle, ring, pinky folded
+  const isOne = indexExtended && !middleExtended && !ringExtended && !pinkyExtended;
+
+  if (isFist) {
+    return { isFist: true, isOne: false, isCenter: true, name: '✊ CLOSED HAND (CENTER)' };
+  }
+
+  if (isOne) {
+    return { isFist: false, isOne: true, isCenter: true, name: '☝️ SHOWING 1 (CENTER)' };
   }
 
   if (pinchDist < 0.055) {
@@ -2927,7 +2936,7 @@ function analyzeHandGesture(lm) {
   }
 
   if (indexExtended && middleExtended && !ringExtended && !pinkyExtended) {
-    return { isFist: false, isPeace: true, name: '✌️ PEACE (CENTER)' };
+    return { isFist: false, isPeace: true, isCenter: true, name: '✌️ PEACE (CENTER)' };
   }
 
   return { isFist: false, name: '🖐️ OPEN PALM' };

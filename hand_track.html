@@ -95,7 +95,7 @@
             </div>
 
             <div class="interaction-hint">
-              <span>🖱️ Drag to rotate 3D view | Move hand LEFT or RIGHT to turn head</span>
+              <span>🖱️ Drag to rotate 3D | ✋ Move Hand to Turn | ✊ Close Hand or ☝️ Show '1' to Center (Home)</span>
             </div>
           </div>
         </div>
@@ -147,7 +147,7 @@
           <!-- Prompt Banner when camera not active or searching -->
           <div class="camera-center-guide" id="cameraGuide">
             <div class="guide-circle"></div>
-            <span class="guide-text" id="guideText">MOVE HAND LEFT OR RIGHT TO TURN HEAD</span>
+            <span class="guide-text" id="guideText">PLACE HAND IN CENTER | ✊ CLOSE HAND OR ☝️ SHOW '1' TO CENTER</span>
           </div>
         </div>
 
@@ -160,8 +160,8 @@
                 <span class="stat-val" id="handMetricCoords">X: 0.50 (CENTER)</span>
               </div>
               <div class="studio-stat-chip">
-                <span class="stat-lbl">ACTIVE ZONE</span>
-                <span class="stat-val gesture-val" id="handValGesture">CENTER (HOME)</span>
+                <span class="stat-lbl">TRACKING STATUS</span>
+                <span class="stat-val gesture-val" id="handValGesture">WAITING FOR HAND</span>
               </div>
               <div class="studio-stat-chip">
                 <span class="stat-lbl">ARDUINO SERIAL</span>
@@ -173,7 +173,12 @@
               <label class="studio-toggle">
                 <input type="checkbox" id="chkHandMirror">
                 <span class="toggle-slider-mini"></span>
-                <span class="toggle-text">Flip Pan Direction</span>
+                <span class="toggle-text">Flip Pan</span>
+              </label>
+              <label class="studio-toggle" title="Optional vertical Up/Down tilt control beyond vertical dead zone">
+                <input type="checkbox" id="chkEnableTilt">
+                <span class="toggle-slider-mini"></span>
+                <span class="toggle-text">Up / Down</span>
               </label>
               <select id="selCameraSource" class="cam-select-mini" title="Active Camera Device (Auto-switches to Robot USB Camera when connected)">
                 <option value="">Detecting cameras...</option>

@@ -14,6 +14,12 @@ const TARGETS = {
   RIGHT: { angle: 50, name: 'Right' }
 };
 
+const TILT_TARGETS = {
+  UP: { angle: 140, name: 'Up' },
+  CENTER: { angle: 90, name: 'Center' },
+  DOWN: { angle: 65, name: 'Down' }
+};
+
 const VISION_CDN = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
 const MODEL_URL =
   'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
@@ -24,6 +30,11 @@ const state = {
   currentZone: 'HOME',
   moveTimer: null,
 
+  tilt: 90,
+  targetTilt: 90,
+  currentTiltZone: 'CENTER',
+  tiltTimer: null,
+
   // Web Serial Port (9600 baud)
   isConnected: false,
   serialPort: null,
@@ -33,7 +44,7 @@ const state = {
   keepReadingSerial: false,
   baudRate: 9600,
 
-  // Hand Tracker
+  // Hand Tracker (Two-Phase: 1. Establish Center Reference -> 2. Intentional Movement)
   hand: {
     active: false,
     stream: null,
@@ -43,13 +54,43 @@ const state = {
     lastVideoTime: -1,
     lastTimestamp: 0,
     hasHand: false,
-    mirrorX: false, // Hand Right -> Head Left, Hand Left -> Head Right
-    // Wait-for-movement anchor (head waits until hand actually moves left/right)
-    anchorX: null,
-    motionArmed: false,
+    mirrorX: false,         // Default: Hand Right -> Head Left, Hand Left -> Head Right
+    enableTilt: false,      // Optional Up/Down vertical tilt
+
+    // Two-stage Reference & Movement State Machine
+    // 'SEARCHING' -> 'WAIT_CENTER' -> 'CALIBRATING' -> 'READY' -> 'MOVING'
+    phase: 'SEARCHING',
+    refX: null,             // Established neutral X reference in center of frame
+    refY: null,             // Established neutral Y reference in center of frame
+    smoothX: null,          // EMA-filtered palm center X (suppresses detection jitter)
+    smoothY: null,          // EMA-filtered palm center Y
+    prevRawX: null,         // Previous raw X for spike/teleport rejection
+    prevRawY: null,
+    centerStableFrames: 0,  // Consecutive frames hand held steady in center to lock reference
+    pendingZone: null,      // Candidate pan direction awaiting consecutive confirmation
+    pendingFrames: 0,       // Consecutive frames confirming intentional pan movement
+    pendingTiltZone: null,  // Candidate tilt direction awaiting confirmation
+    pendingTiltFrames: 0,
+    hasTriggeredMove: false,
     lastHandSeenAt: 0,
-    moveThreshold: 0.075,
-    centerReturnBand: 0.04,
+
+    // Gesture override state (Closed Hand / Fist OR Showing 1 -> Center / Home)
+    centerGestureFrames: 0,
+    pendingCenterGesture: null,
+    activeCenterGesture: null,
+
+    // Tuning constants (Big Center Column = 24% wide, matching original 0.38..0.62)
+    centerBoxMinX: 0.36,    // Hand must enter center column (36%..64%) to set reference
+    centerBoxMaxX: 0.64,
+    deadZoneX: 0.12,        // ±12% around reference -> BIG 24% center dead zone column
+    returnBandX: 0.085,     // Hysteresis return band inside dead zone
+    deadZoneY: 0.15,        // ±15% vertical dead zone (when Up/Down is enabled)
+    returnBandY: 0.10,
+    emaAlpha: 0.28,         // Smooth low-pass filter against noisy landmarks
+    maxJumpDelta: 0.24,     // Reject sudden unstable detection jumps
+    centerLockRequired: 6,  // ~200ms steady in center to lock reference without moving robot
+    intentFramesRequired: 4,// ~130ms intentional movement beyond dead zone before sending command
+
     // Offline fallback buffer
     prevFrameData: null,
     offCanvas: null,
@@ -106,6 +147,7 @@ const dom = {
   handValGesture: document.getElementById('handValGesture'),
   serialDispatchRate: document.getElementById('serialDispatchRate'),
   chkHandMirror: document.getElementById('chkHandMirror'),
+  chkEnableTilt: document.getElementById('chkEnableTilt'),
   btnRestartCamera: document.getElementById('btnRestartCamera')
 };
 
@@ -325,23 +367,94 @@ function moveTo(zone, { forceSend = false } = {}) {
       clearInterval(state.moveTimer);
       state.moveTimer = null;
     }
-    update3DHeadAngles(state.pan);
+    update3DHeadAngles(state.pan, state.tilt);
   }, 15);
 }
 
+function moveTiltTo(tiltZone) {
+  const target = TILT_TARGETS[tiltZone];
+  if (!target) return;
+
+  if (state.currentTiltZone === tiltZone && state.targetTilt === target.angle) return;
+
+  state.currentTiltZone = tiltZone;
+  state.targetTilt = target.angle;
+
+  if (tiltZone === 'UP' || tiltZone === 'DOWN') {
+    sendToArduino(tiltZone);
+  }
+
+  if (state.tiltTimer) return;
+
+  state.tiltTimer = setInterval(() => {
+    if (state.tilt < state.targetTilt) {
+      state.tilt++;
+    } else if (state.tilt > state.targetTilt) {
+      state.tilt--;
+    } else {
+      clearInterval(state.tiltTimer);
+      state.tiltTimer = null;
+    }
+    update3DHeadAngles(state.pan, state.tilt);
+  }, 15);
+}
+
+/**
+ * Stops all active robot head motion immediately (e.g. when hand leaves camera frame).
+ */
+function stopAllMovement() {
+  if (state.moveTimer) {
+    clearInterval(state.moveTimer);
+    state.moveTimer = null;
+  }
+  if (state.tiltTimer) {
+    clearInterval(state.tiltTimer);
+    state.tiltTimer = null;
+  }
+  state.targetPan = state.pan;
+  state.targetTilt = state.tilt;
+  update3DHeadAngles(state.pan, state.tilt);
+}
+
+/**
+ * Clears the established hand reference so next detection must re-establish at center.
+ */
+function resetHandReference() {
+  state.hand.phase = 'SEARCHING';
+  state.hand.refX = null;
+  state.hand.refY = null;
+  state.hand.smoothX = null;
+  state.hand.smoothY = null;
+  state.hand.prevRawX = null;
+  state.hand.prevRawY = null;
+  state.hand.centerStableFrames = 0;
+  state.hand.pendingZone = null;
+  state.hand.pendingFrames = 0;
+  state.hand.pendingTiltZone = null;
+  state.hand.pendingTiltFrames = 0;
+  state.hand.hasTriggeredMove = false;
+  state.hand.centerGestureFrames = 0;
+  state.hand.pendingCenterGesture = null;
+  state.hand.activeCenterGesture = null;
+}
+
 function centerHead() {
-  state.hand.anchorX = null;
-  state.hand.motionArmed = false;
+  resetHandReference();
   moveTo('HOME', { forceSend: true });
+  if (state.hand.enableTilt) {
+    moveTiltTo('CENTER');
+  }
 }
 
 // ============================================================================
-// Column 1: Three.js 3D Robot Head Visualizer (Left / Right Only)
+// Column 1: Three.js 3D Robot Head Visualizer
 // ============================================================================
 let scene, camera, renderer;
 let robotHeadGroup, neckPivot;
 let targetEulerYaw = 0;
 let currentEulerYaw = 0;
+let targetEulerPitch = 0;
+let currentEulerPitch = 0;
 
 function initThreeJS() {
   const container = dom.threeContainer;
@@ -488,28 +601,39 @@ function buildRobotModel() {
   robotHeadGroup.add(visorLight);
 }
 
-function update3DHeadAngles(panAngle) {
+function update3DHeadAngles(panAngle, tiltAngle = 90) {
   // 90° = CENTER (0 rad)
   // 50° = RIGHT -> -(50 - 90) = +40° rad -> nose points RIGHT (+X)
   // 140° = LEFT -> -(140 - 90) = -50° rad -> nose points LEFT (-X)
   targetEulerYaw = -((panAngle - 90) * (Math.PI / 180));
+  targetEulerPitch = state.hand.enableTilt ? -((tiltAngle - 90) * (Math.PI / 180)) * 0.75 : 0;
 
   const relYaw = -(panAngle - 90);
   const dirTag = relYaw > 4 ? 'RIGHT' : relYaw < -4 ? 'LEFT' : 'CENTER';
 
   if (dom.hudYaw) dom.hudYaw.textContent = `${relYaw > 0 ? '+' : ''}${relYaw.toFixed(0)}° (${dirTag})`;
-  if (dom.hudPitch) dom.hudPitch.textContent = 'LOCKED';
   if (dom.servoPanVal) dom.servoPanVal.textContent = `${panAngle}°`;
-  if (dom.servoTiltVal) dom.servoTiltVal.textContent = '90° (LOCK)';
   if (dom.chipPanVal) dom.chipPanVal.textContent = `${panAngle}° (${dirTag})`;
-  if (dom.chipTiltVal) dom.chipTiltVal.textContent = 'LOCKED';
+
+  if (state.hand.enableTilt) {
+    const relPitch = tiltAngle - 90;
+    const tiltTag = relPitch > 4 ? 'UP' : relPitch < -4 ? 'DOWN' : 'CENTER';
+    if (dom.hudPitch) dom.hudPitch.textContent = `${relPitch > 0 ? '+' : ''}${relPitch.toFixed(0)}° (${tiltTag})`;
+    if (dom.servoTiltVal) dom.servoTiltVal.textContent = `${tiltAngle}°`;
+    if (dom.chipTiltVal) dom.chipTiltVal.textContent = `${tiltAngle}° (${tiltTag})`;
+  } else {
+    if (dom.hudPitch) dom.hudPitch.textContent = 'LOCKED';
+    if (dom.servoTiltVal) dom.servoTiltVal.textContent = '90° (LOCK)';
+    if (dom.chipTiltVal) dom.chipTiltVal.textContent = 'LOCKED';
+  }
 }
 
 function animate() {
   requestAnimationFrame(animate);
   currentEulerYaw += (targetEulerYaw - currentEulerYaw) * 0.25;
+  currentEulerPitch += (targetEulerPitch - currentEulerPitch) * 0.25;
   if (neckPivot) neckPivot.rotation.y = currentEulerYaw;
-  if (robotHeadGroup) robotHeadGroup.rotation.x = 0;
+  if (robotHeadGroup) robotHeadGroup.rotation.x = state.hand.enableTilt ? currentEulerPitch : 0;
   renderer.render(scene, camera);
 }
 
@@ -583,64 +707,320 @@ async function initHandLandmarker() {
 }
 
 /**
- * Evaluates hand movement relative to its initial anchor position.
- * - On initial hand detection: locks anchorX and returns null (NO head movement).
- * - Waits until hand moves horizontally >= moveThreshold (~7.5% of frame width).
- * - Once armed:
- *     Hand moved RIGHT (+deltaX) -> LEFT  (or RIGHT if Flip Pan is checked)
- *     Hand moved LEFT  (-deltaX) -> RIGHT (or LEFT if Flip Pan is checked)
- *     Hand returned near anchor  -> HOME  (Center)
+ * Computes a stable palm center from 5 core palm landmarks (Wrist + 4 MCP knuckles)
+ * in mirrored selfie coordinates (0 = left edge, 1 = right edge).
  */
-function zoneFromHandMovement(visualX) {
-  if (state.hand.anchorX === null) {
-    state.hand.anchorX = visualX;
-    state.hand.motionArmed = false;
-    return null; // Wait for actual hand movement before moving head
+function computePalmCenter(rawLandmarks) {
+  const indices = [0, 5, 9, 13, 17];
+  let sumX = 0;
+  let sumY = 0;
+  for (const idx of indices) {
+    sumX += 1 - rawLandmarks[idx].x;
+    sumY += rawLandmarks[idx].y;
   }
-
-  const deltaX = visualX - state.hand.anchorX;
-  const threshold = state.hand.moveThreshold;
-  const returnBand = state.hand.centerReturnBand;
-
-  if (!state.hand.motionArmed) {
-    if (Math.abs(deltaX) < threshold) {
-      return null; // Still stationary — do not move head yet
-    }
-    state.hand.motionArmed = true;
-  }
-
-  // Default (mirrorX = false): Hand Right (+deltaX) -> Head LEFT, Hand Left (-deltaX) -> Head RIGHT
-  const rightMoveZone = state.hand.mirrorX ? 'RIGHT' : 'LEFT';
-  const leftMoveZone = state.hand.mirrorX ? 'LEFT' : 'RIGHT';
-
-  if (deltaX >= threshold) return rightMoveZone;
-  if (deltaX <= -threshold) return leftMoveZone;
-  if (Math.abs(deltaX) <= returnBand) return 'HOME';
-
-  // Hysteresis band between returnBand and threshold: hold current zone cleanly
-  return state.currentZone;
+  return {
+    x: sumX / indices.length,
+    y: sumY / indices.length
+  };
 }
 
-function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone, isWaitingForMove = false) {
-  const anchor = state.hand.anchorX !== null ? state.hand.anchorX : 0.5;
-  const th = state.hand.moveThreshold;
-  const leftLine = Math.max(24, Math.min(w - 48, (anchor - th) * w));
-  const rightLine = Math.max(leftLine + 24, Math.min(w - 24, (anchor + th) * w));
+/**
+ * Analyzes hand landmarks to detect:
+ *   1. CLOSED HAND (Fist) -> all 4 fingers (index, middle, ring, pinky) folded
+ *   2. SHOWS 1 -> index finger extended, while middle, ring, and pinky are folded
+ * Both gestures trigger instant return to CENTER / HOME position (90°, 90°).
+ */
+function detectHandGesture(lm) {
+  if (!lm || lm.length < 21) return { type: 'NONE', isCenterGesture: false, name: 'NO HAND' };
+
+  const dist = (i, j) => Math.hypot(lm[i].x - lm[j].x, lm[i].y - lm[j].y);
+
+  // A finger is extended if tip is further from wrist than PIP AND tip is higher than PIP (in upright selfie view)
+  const indexExtended = (dist(8, 0) > dist(6, 0) * 1.10) && (lm[8].y < lm[6].y || dist(8, 0) > dist(6, 0) * 1.25);
+  const middleExtended = (dist(12, 0) > dist(10, 0) * 1.10) && (lm[12].y < lm[10].y || dist(12, 0) > dist(10, 0) * 1.25);
+  const ringExtended = (dist(16, 0) > dist(14, 0) * 1.10) && (lm[16].y < lm[14].y || dist(16, 0) > dist(14, 0) * 1.25);
+  const pinkyExtended = (dist(20, 0) > dist(18, 0) * 1.10) && (lm[20].y < lm[18].y || dist(20, 0) > dist(18, 0) * 1.25);
+
+  const isFist = !indexExtended && !middleExtended && !ringExtended && !pinkyExtended;
+  const isOne = indexExtended && !middleExtended && !ringExtended && !pinkyExtended;
+
+  if (isFist) {
+    return { type: 'FIST', isCenterGesture: true, name: '✊ CLOSED HAND' };
+  }
+  if (isOne) {
+    return { type: 'ONE', isCenterGesture: true, name: '☝️ SHOWING 1' };
+  }
+
+  return { type: 'OPEN', isCenterGesture: false, name: '🖐️ OPEN HAND' };
+}
+
+/**
+ * Two-Phase Hand Detection & Intentional Movement State Machine:
+ *   Phase 1 (Detection / Reference):
+ *     - Hand must be detected and held steady inside the BIG center column (36%..64%)
+ *       for `centerLockRequired` frames to establish (refX, refY).
+ *     - ZERO robot movement occurs during detection or calibration.
+ *   Phase 2 (Intentional Movement beyond Dead Zone):
+ *     - Inside the dead zone (±12% X around refX, 24% total center column width):
+ *       Robot stays completely stationary.
+ *     - Beyond the dead zone for `intentFramesRequired` consecutive frames:
+ *       Triggers smooth robot movement in that direction (Right -> LEFT, Left -> RIGHT).
+ *   Gesture Override:
+ *     - Closing hand (✊ Fist) OR showing 1 (☝️ Index up) overrides any zone
+ *       and immediately returns the head to CENTER / HOME (90°, 90°).
+ */
+function evaluateHandTracking(rawX, rawY, gesture = null) {
+  const h = state.hand;
+
+  // Reject single-frame unstable detection jumps/teleports
+  if (h.prevRawX !== null && h.prevRawY !== null) {
+    const jump = Math.hypot(rawX - h.prevRawX, rawY - h.prevRawY);
+    if (jump > h.maxJumpDelta) {
+      h.prevRawX = rawX;
+      h.prevRawY = rawY;
+      return {
+        phase: h.phase,
+        panZone: null,
+        tiltZone: null,
+        smoothX: h.smoothX ?? rawX,
+        smoothY: h.smoothY ?? rawY,
+        lockProgress: h.centerStableFrames / h.centerLockRequired,
+        gesture
+      };
+    }
+  }
+  h.prevRawX = rawX;
+  h.prevRawY = rawY;
+
+  // Low-pass EMA smoothing to remove minor tremor & landmark jitter
+  if (h.smoothX === null || h.smoothY === null) {
+    h.smoothX = rawX;
+    h.smoothY = rawY;
+  } else {
+    h.smoothX += (rawX - h.smoothX) * h.emaAlpha;
+    h.smoothY += (rawY - h.smoothY) * h.emaAlpha;
+  }
+
+  // -------------------------------------------------------------------------
+  // GESTURE OVERRIDE: Closed Hand (Fist) or Showing 1 -> Return to Center / Home
+  // -------------------------------------------------------------------------
+  if (gesture && gesture.isCenterGesture) {
+    if (h.pendingCenterGesture === gesture.type) {
+      h.centerGestureFrames++;
+    } else {
+      h.pendingCenterGesture = gesture.type;
+      h.centerGestureFrames = 1;
+    }
+
+    if (h.centerGestureFrames >= 2) {
+      h.activeCenterGesture = gesture.type;
+      h.phase = 'CENTER_GESTURE';
+      h.pendingZone = null;
+      h.pendingFrames = 0;
+      h.pendingTiltZone = null;
+      h.pendingTiltFrames = 0;
+      h.hasTriggeredMove = false;
+      // Anchor reference point so re-opening hand stays in dead zone
+      h.refX = h.smoothX;
+      h.refY = h.smoothY;
+
+      return {
+        phase: 'CENTER_GESTURE',
+        panZone: 'HOME',
+        tiltZone: state.hand.enableTilt ? 'CENTER' : null,
+        smoothX: h.smoothX,
+        smoothY: h.smoothY,
+        lockProgress: 1,
+        gesture
+      };
+    }
+  } else {
+    h.centerGestureFrames = 0;
+    h.pendingCenterGesture = null;
+    h.activeCenterGesture = null;
+    if (h.phase === 'CENTER_GESTURE') {
+      h.phase = 'READY';
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // PHASE 1: Establish hand reference at the center of the camera frame
+  // (NEVER moves the robot!)
+  // -------------------------------------------------------------------------
+  if (h.refX === null || h.refY === null) {
+    const inCenterZone = h.smoothX >= h.centerBoxMinX && h.smoothX <= h.centerBoxMaxX;
+
+    if (!inCenterZone) {
+      h.phase = 'WAIT_CENTER';
+      h.centerStableFrames = 0;
+      return {
+        phase: 'WAIT_CENTER',
+        panZone: null,
+        tiltZone: null,
+        smoothX: h.smoothX,
+        smoothY: h.smoothY,
+        lockProgress: 0
+      };
+    }
+
+    h.phase = 'CALIBRATING';
+    h.centerStableFrames++;
+
+    if (h.centerStableFrames >= h.centerLockRequired) {
+      // Lock neutral reference position — do NOT trigger any robot movement!
+      h.refX = h.smoothX;
+      h.refY = h.smoothY;
+      h.phase = 'READY';
+      h.pendingZone = null;
+      h.pendingFrames = 0;
+      h.pendingTiltZone = null;
+      h.pendingTiltFrames = 0;
+      h.hasTriggeredMove = false;
+    }
+
+    return {
+      phase: h.phase,
+      panZone: null,
+      tiltZone: null,
+      smoothX: h.smoothX,
+      smoothY: h.smoothY,
+      lockProgress: Math.min(1, h.centerStableFrames / h.centerLockRequired)
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // PHASE 2: Reference locked — only move on intentional motion beyond dead zone
+  // -------------------------------------------------------------------------
+  const dx = h.smoothX - h.refX;
+  const dy = h.smoothY - h.refY;
+
+  // Default (mirrorX = false): Hand Right (+dx) -> Head LEFT, Hand Left (-dx) -> Head RIGHT
+  const rightMoveZone = h.mirrorX ? 'RIGHT' : 'LEFT';
+  const leftMoveZone = h.mirrorX ? 'LEFT' : 'RIGHT';
+
+  let candidatePan = null;
+  if (dx >= h.deadZoneX) {
+    candidatePan = rightMoveZone;
+  } else if (dx <= -h.deadZoneX) {
+    candidatePan = leftMoveZone;
+  } else if (Math.abs(dx) <= h.returnBandX) {
+    // Inside dead zone: stay completely stationary if we haven't moved yet;
+    // return to HOME only if user previously moved out and intentionally returned to center.
+    if (h.hasTriggeredMove && state.currentZone !== 'HOME') {
+      candidatePan = 'HOME';
+    } else {
+      h.pendingZone = null;
+      h.pendingFrames = 0;
+      if (!h.hasTriggeredMove || state.currentZone === 'HOME') {
+        h.phase = 'READY';
+      }
+    }
+  } else {
+    // Hysteresis ring between returnBandX and deadZoneX: hold current state stably
+    h.pendingZone = null;
+    h.pendingFrames = 0;
+  }
+
+  let confirmedPan = null;
+  if (candidatePan !== null && candidatePan !== state.currentZone) {
+    if (h.pendingZone === candidatePan) {
+      h.pendingFrames++;
+    } else {
+      h.pendingZone = candidatePan;
+      h.pendingFrames = 1;
+    }
+    if (h.pendingFrames >= h.intentFramesRequired) {
+      confirmedPan = candidatePan;
+      h.hasTriggeredMove = true;
+      h.phase = candidatePan === 'HOME' ? 'READY' : 'MOVING';
+      h.pendingZone = null;
+      h.pendingFrames = 0;
+    }
+  } else if (candidatePan === state.currentZone && candidatePan !== null) {
+    h.pendingZone = null;
+    h.pendingFrames = 0;
+    h.phase = candidatePan === 'HOME' ? 'READY' : 'MOVING';
+  }
+
+  // Optional vertical Up/Down tilt when explicitly enabled
+  let confirmedTilt = null;
+  if (h.enableTilt) {
+    let candidateTilt = null;
+    if (dy <= -h.deadZoneY) candidateTilt = 'UP';
+    else if (dy >= h.deadZoneY) candidateTilt = 'DOWN';
+    else if (Math.abs(dy) <= h.returnBandY && state.currentTiltZone !== 'CENTER') {
+      candidateTilt = 'CENTER';
+    }
+
+    if (candidateTilt !== null && candidateTilt !== state.currentTiltZone) {
+      if (h.pendingTiltZone === candidateTilt) {
+        h.pendingTiltFrames++;
+      } else {
+        h.pendingTiltZone = candidateTilt;
+        h.pendingTiltFrames = 1;
+      }
+      if (h.pendingTiltFrames >= h.intentFramesRequired) {
+        confirmedTilt = candidateTilt;
+        h.hasTriggeredMove = true;
+        h.pendingTiltZone = null;
+        h.pendingTiltFrames = 0;
+      }
+    } else {
+      h.pendingTiltZone = null;
+      h.pendingTiltFrames = 0;
+    }
+  }
+
+  return {
+    phase: h.phase,
+    panZone: confirmedPan,
+    tiltZone: confirmedTilt,
+    smoothX: h.smoothX,
+    smoothY: h.smoothY,
+    lockProgress: 1
+  };
+}
+
+function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone, phase = 'SEARCHING', lockProgress = 0, outcomeGesture = null) {
+  // BIG Center Column (24% wide — identical to original 0.38..0.62 column!)
+  const refCenter = state.hand.refX !== null ? state.hand.refX : 0.5;
+  const dz = state.hand.deadZoneX; // 0.12 -> total center column width = 0.24 (24%)
+  const leftLine = Math.max(40, Math.min(w * 0.44, (refCenter - dz) * w));
+  const rightLine = Math.max(w * 0.56, Math.min(w - 40, (refCenter + dz) * w));
   const leftBoxZone = state.hand.mirrorX ? 'LEFT' : 'RIGHT';
   const rightBoxZone = state.hand.mirrorX ? 'RIGHT' : 'LEFT';
 
-  // Highlight active zone only once hand has moved
-  if (handPoint && !isWaitingForMove && activeZone) {
-    ctx.fillStyle = 'rgba(0, 240, 255, 0.14)';
+  // Highlight appropriate column
+  if (phase === 'CENTER_GESTURE') {
+    // Glowing emerald green highlight over center column
+    ctx.fillStyle = 'rgba(0, 255, 136, 0.22)';
+    ctx.fillRect(leftLine, 0, rightLine - leftLine, h);
+  } else if (phase === 'WAIT_CENTER' || phase === 'CALIBRATING') {
+    // Highlight the BIG center column to invite user to place hand in center
+    ctx.fillStyle = phase === 'CALIBRATING' ? 'rgba(0, 255, 136, 0.13)' : 'rgba(255, 184, 0, 0.13)';
+    ctx.fillRect(leftLine, 0, rightLine - leftLine, h);
+  } else if (handPoint && phase === 'MOVING' && activeZone) {
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.15)';
     if (activeZone === leftBoxZone) ctx.fillRect(0, 0, leftLine, h);
     else if (activeZone === 'HOME') ctx.fillRect(leftLine, 0, rightLine - leftLine, h);
     else if (activeZone === rightBoxZone) ctx.fillRect(rightLine, 0, w - rightLine, h);
+  } else if (handPoint && phase === 'READY') {
+    // Subtle neutral glow in center dead zone (robot completely stationary)
+    ctx.fillStyle = 'rgba(0, 240, 255, 0.08)';
+    ctx.fillRect(leftLine, 0, rightLine - leftLine, h);
   }
 
-  // Zone divider dashed lines around the hand's anchor
+  // Big Center Column divider dashed lines
   ctx.save();
-  ctx.strokeStyle = isWaitingForMove ? 'rgba(255, 184, 0, 0.55)' : 'rgba(0, 240, 255, 0.42)';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle =
+    phase === 'CENTER_GESTURE'
+      ? 'rgba(0, 255, 136, 0.85)'
+      : phase === 'WAIT_CENTER'
+        ? 'rgba(255, 184, 0, 0.65)'
+        : phase === 'CALIBRATING'
+          ? 'rgba(0, 255, 136, 0.65)'
+          : 'rgba(0, 240, 255, 0.48)';
+  ctx.lineWidth = phase === 'CENTER_GESTURE' ? 2.5 : 2;
   ctx.setLineDash([6, 6]);
   ctx.beginPath();
   ctx.moveTo(leftLine, 0);
@@ -649,51 +1029,100 @@ function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone, is
   ctx.lineTo(rightLine, h);
   ctx.stroke();
 
-  // Draw anchor reference line when hand is locked
-  if (state.hand.anchorX !== null) {
-    const ax = state.hand.anchorX * w;
-    ctx.strokeStyle = 'rgba(255, 184, 0, 0.35)';
-    ctx.setLineDash([3, 5]);
+  // Draw Reference Point crosshair when neutral reference is established
+  if (state.hand.refX !== null && state.hand.refY !== null) {
+    const rx = state.hand.refX * w;
+    const ry = state.hand.refY * h;
+    ctx.setLineDash([]);
+    ctx.strokeStyle = phase === 'CENTER_GESTURE' ? '#00ff88' : 'rgba(0, 240, 255, 0.55)';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(ax, 38);
-    ctx.lineTo(ax, h);
+    ctx.arc(rx, ry, 10, 0, Math.PI * 2);
+    ctx.moveTo(rx - 16, ry);
+    ctx.lineTo(rx + 16, ry);
+    ctx.moveTo(rx, ry - 16);
+    ctx.lineTo(rx, ry + 16);
     ctx.stroke();
   }
   ctx.setLineDash([]);
 
   // Zone headers
-  ctx.font = '700 12px Orbitron, sans-serif';
+  ctx.font = '700 13px Orbitron, sans-serif';
   ctx.textAlign = 'center';
-  const activeMoving = handPoint && !isWaitingForMove;
-  ctx.fillStyle = activeMoving && activeZone === leftBoxZone ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
-  ctx.fillText(leftBoxZone === 'RIGHT' ? 'HEAD → RIGHT' : '← HEAD LEFT', leftLine / 2, 26);
-  ctx.fillStyle = isWaitingForMove ? '#ffb800' : (activeMoving && activeZone === 'HOME' ? '#00f0ff' : 'rgba(226, 232, 240, 0.72)');
-  ctx.fillText(isWaitingForMove ? 'HOLD' : 'CENTER', (leftLine + rightLine) / 2, 26);
-  ctx.fillStyle = activeMoving && activeZone === rightBoxZone ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
-  ctx.fillText(rightBoxZone === 'LEFT' ? 'HEAD → LEFT' : 'HEAD RIGHT →', rightLine + (w - rightLine) / 2, 26);
+  const isMoving = handPoint && phase === 'MOVING';
+  ctx.fillStyle = isMoving && activeZone === leftBoxZone ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
+  ctx.fillText(leftBoxZone === 'RIGHT' ? 'HEAD → RIGHT' : '← HEAD LEFT', leftLine / 2, 28);
+
+  const centerTitle =
+    phase === 'CENTER_GESTURE' && outcomeGesture
+      ? `${outcomeGesture.name} → CENTER`
+      : phase === 'WAIT_CENTER'
+        ? 'PLACE HAND HERE'
+        : phase === 'CALIBRATING'
+          ? 'LOCKING CENTER...'
+          : phase === 'READY'
+            ? 'CENTER (DEAD ZONE)'
+            : 'CENTER (HOME)';
+  ctx.fillStyle =
+    phase === 'CENTER_GESTURE'
+      ? '#00ff88'
+      : phase === 'WAIT_CENTER'
+        ? '#ffb800'
+        : phase === 'CALIBRATING' || phase === 'READY'
+          ? '#00f0ff'
+          : 'rgba(226, 232, 240, 0.78)';
+  ctx.fillText(centerTitle, (leftLine + rightLine) / 2, 28);
+
+  ctx.fillStyle = isMoving && activeZone === rightBoxZone ? '#00ff88' : 'rgba(226, 232, 240, 0.72)';
+  ctx.fillText(rightBoxZone === 'LEFT' ? 'HEAD → LEFT' : 'HEAD RIGHT →', rightLine + (w - rightLine) / 2, 28);
   ctx.restore();
 
   // Draw hand skeleton if landmarks are available
   if (mirroredLandmarks) {
-    drawCyberHandSkeleton(ctx, mirroredLandmarks, w, h);
+    drawCyberHandSkeleton(ctx, mirroredLandmarks, w, h, phase === 'CENTER_GESTURE');
   }
 
   // Tracked palm marker
   if (handPoint) {
     const px = handPoint.x * w;
     const py = handPoint.y * h;
-    const accent = isWaitingForMove ? '#ffb800' : '#00ff88';
+    const accent =
+      phase === 'CENTER_GESTURE'
+        ? '#00ff88'
+        : phase === 'WAIT_CENTER'
+          ? '#ffb800'
+          : phase === 'CALIBRATING'
+            ? '#00f0ff'
+            : phase === 'READY'
+              ? '#00f0ff'
+              : '#00ff88';
 
     ctx.save();
     ctx.beginPath();
     ctx.arc(px, py, 18, 0, Math.PI * 2);
-    ctx.fillStyle = isWaitingForMove ? 'rgba(255, 184, 0, 0.22)' : 'rgba(0, 255, 136, 0.22)';
+    ctx.fillStyle =
+      phase === 'CENTER_GESTURE'
+        ? 'rgba(0, 255, 136, 0.28)'
+        : phase === 'WAIT_CENTER'
+          ? 'rgba(255, 184, 0, 0.22)'
+          : phase === 'MOVING'
+            ? 'rgba(0, 255, 136, 0.22)'
+            : 'rgba(0, 240, 255, 0.22)';
     ctx.fill();
     ctx.lineWidth = 2.5;
     ctx.strokeStyle = accent;
     ctx.shadowColor = accent;
     ctx.shadowBlur = 10;
     ctx.stroke();
+
+    // Calibration progress arc while locking center reference
+    if (phase === 'CALIBRATING' && lockProgress > 0) {
+      ctx.beginPath();
+      ctx.arc(px, py, 24, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lockProgress);
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
 
     ctx.beginPath();
     ctx.arc(px, py, 5, 0, Math.PI * 2);
@@ -702,15 +1131,19 @@ function drawZoneOverlay(ctx, w, h, handPoint, mirroredLandmarks, activeZone, is
 
     ctx.font = '700 11px JetBrains Mono, monospace';
     ctx.fillStyle = accent;
-    const markerText = isWaitingForMove
-      ? 'WAIT FOR MOVE'
-      : `${TARGETS[activeZone].name.toUpperCase()} (${TARGETS[activeZone].angle}°)`;
-    ctx.fillText(markerText, px + 24, py + 4);
+    let markerText = 'HOLD IN DEAD ZONE';
+    if (phase === 'CENTER_GESTURE') markerText = `${outcomeGesture ? outcomeGesture.name : 'GESTURE'} → HOME (90°)`;
+    else if (phase === 'WAIT_CENTER') markerText = 'MOVE TO CENTER FIRST';
+    else if (phase === 'CALIBRATING') markerText = `SETTING REF ${Math.round(lockProgress * 100)}%`;
+    else if (phase === 'READY') markerText = 'REF LOCKED (STATIONARY)';
+    else if (phase === 'MOVING') markerText = `${TARGETS[activeZone].name.toUpperCase()} (${TARGETS[activeZone].angle}°)`;
+
+    ctx.fillText(markerText, px + 26, py + 4);
     ctx.restore();
   }
 }
 
-function drawCyberHandSkeleton(ctx, lm, w, h) {
+function drawCyberHandSkeleton(ctx, lm, w, h, isCenterGesture = false) {
   const connections = [
     [0, 1], [1, 2], [2, 3], [3, 4],
     [0, 5], [5, 6], [6, 7], [7, 8],
@@ -720,11 +1153,12 @@ function drawCyberHandSkeleton(ctx, lm, w, h) {
     [0, 17]
   ];
 
+  const strokeColor = isCenterGesture ? '#00ff88' : '#00f0ff';
   ctx.save();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = '#00f0ff';
-  ctx.shadowColor = '#00f0ff';
-  ctx.shadowBlur = 6;
+  ctx.lineWidth = isCenterGesture ? 2.5 : 2;
+  ctx.strokeStyle = strokeColor;
+  ctx.shadowColor = strokeColor;
+  ctx.shadowBlur = isCenterGesture ? 10 : 6;
 
   connections.forEach(([i, j]) => {
     ctx.beginPath();
@@ -737,10 +1171,78 @@ function drawCyberHandSkeleton(ctx, lm, w, h) {
   lm.forEach((pt, i) => {
     ctx.beginPath();
     ctx.arc(pt.x * w, pt.y * h, i === 4 || i === 8 || i === 12 || i === 16 || i === 20 ? 4 : 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = i === 4 || i === 8 || i === 12 || i === 16 || i === 20 ? '#ff0055' : '#00f0ff';
+    ctx.fillStyle = isCenterGesture ? '#ffffff' : (i === 4 || i === 8 || i === 12 || i === 16 || i === 20 ? '#ff0055' : '#00f0ff');
     ctx.fill();
   });
   ctx.restore();
+}
+
+function applyTrackingOutcome(ctx, w, h, outcome, mirroredLandmarks) {
+  // Trigger robot motor movement ONLY on confirmed intentional movement beyond dead zone
+  if (outcome.panZone) {
+    moveTo(outcome.panZone);
+  }
+  if (outcome.tiltZone && state.hand.enableTilt) {
+    moveTiltTo(outcome.tiltZone);
+  } else if (outcome.phase === 'CENTER_GESTURE' && state.tilt !== 90) {
+    moveTiltTo('CENTER');
+  }
+
+  const displayZone = outcome.panZone || state.currentZone;
+  drawZoneOverlay(
+    ctx,
+    w,
+    h,
+    { x: outcome.smoothX, y: outcome.smoothY },
+    mirroredLandmarks,
+    displayZone,
+    outcome.phase,
+    outcome.lockProgress,
+    outcome.gesture
+  );
+
+  if (outcome.phase === 'CENTER_GESTURE' && outcome.gesture) {
+    updateTrackingBadge(`${outcome.gesture.name} // HOME`, 'tracking');
+    if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${outcome.smoothX.toFixed(2)} (CENTER / HOME)`;
+    if (dom.handValGesture) dom.handValGesture.textContent = `${outcome.gesture.name} → CENTER`;
+    if (dom.chipTrackState) dom.chipTrackState.textContent = 'CENTER (HOME)';
+  } else if (outcome.phase === 'WAIT_CENTER') {
+    updateTrackingBadge('MOVE TO CENTER', 'searching');
+    if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${outcome.smoothX.toFixed(2)} (OFF CENTER)`;
+    if (dom.handValGesture) dom.handValGesture.textContent = 'PLACE HAND IN CENTER';
+    if (dom.chipTrackState) dom.chipTrackState.textContent = 'SET CENTER REF';
+  } else if (outcome.phase === 'CALIBRATING') {
+    const pct = Math.round(outcome.lockProgress * 100);
+    updateTrackingBadge(`LOCKING REF ${pct}%`, 'searching');
+    if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${outcome.smoothX.toFixed(2)} (CENTER)`;
+    if (dom.handValGesture) dom.handValGesture.textContent = `ESTABLISHING REF ${pct}%`;
+    if (dom.chipTrackState) dom.chipTrackState.textContent = 'CALIBRATING REF';
+  } else if (outcome.phase === 'READY') {
+    updateTrackingBadge('READY // DEAD ZONE', 'searching');
+    if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${outcome.smoothX.toFixed(2)} (DEAD ZONE)`;
+    if (dom.handValGesture) dom.handValGesture.textContent = 'STATIONARY (MOVE HAND)';
+    if (dom.chipTrackState) dom.chipTrackState.textContent = 'STATIONARY (DEAD ZONE)';
+  } else {
+    const zoneLabel = TARGETS[displayZone].name.toUpperCase();
+    updateTrackingBadge(`MOVING: ${zoneLabel}`, 'tracking');
+    if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${outcome.smoothX.toFixed(2)} (${zoneLabel})`;
+    if (dom.handValGesture) dom.handValGesture.textContent = `MOVED → ${zoneLabel}`;
+    if (dom.chipTrackState) dom.chipTrackState.textContent = `FOLLOWING → ${zoneLabel}`;
+  }
+}
+
+function handleHandLost(ctx, w, h, now) {
+  state.hand.hasHand = false;
+  // Brief 200ms tolerance for 1-frame flicker; once hand disappears, STOP all robot movement immediately!
+  if (state.hand.phase !== 'SEARCHING' && now - state.hand.lastHandSeenAt > 200) {
+    stopAllMovement();
+    resetHandReference();
+  }
+  if (dom.cameraGuide) dom.cameraGuide.classList.remove('hidden');
+  drawZoneOverlay(ctx, w, h, null, null, state.currentZone, 'SEARCHING', 0);
+  updateTrackingBadge('HAND LOST // STOPPED', 'searching');
+  if (dom.handValGesture) dom.handValGesture.textContent = 'STOPPED (NO HAND)';
+  if (dom.chipTrackState) dom.chipTrackState.textContent = 'STOPPED (NO HAND)';
 }
 
 function trackFrame() {
@@ -787,47 +1289,19 @@ function trackFrame() {
         if (dom.cameraGuide) dom.cameraGuide.classList.add('hidden');
 
         const lm = result.landmarks[0];
-        // Mirror X to match selfie-view video
         const mirroredLandmarks = lm.map((pt) => ({
           x: 1 - pt.x,
           y: pt.y,
           z: pt.z
         }));
 
-        // Landmark 9 (middle finger MCP) is centered on the palm
-        const palm = lm[9];
-        const visualX = 1 - palm.x;
-        const zone = zoneFromHandMovement(visualX);
-
-        if (zone === null) {
-          // Hand detected, waiting for actual left/right hand movement — do NOT turn head yet!
-          drawZoneOverlay(ctx, w, h, { x: visualX, y: palm.y }, mirroredLandmarks, state.currentZone, true);
-          updateTrackingBadge('HAND READY // MOVE', 'searching');
-          if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (HOLD)`;
-          if (dom.handValGesture) dom.handValGesture.textContent = 'WAITING FOR MOVE...';
-          if (dom.chipTrackState) dom.chipTrackState.textContent = 'WAIT FOR MOVEMENT';
-        } else {
-          moveTo(zone);
-          drawZoneOverlay(ctx, w, h, { x: visualX, y: palm.y }, mirroredLandmarks, zone, false);
-
-          const zoneLabel = TARGETS[zone].name.toUpperCase();
-          updateTrackingBadge(`TRACKING: ${zoneLabel}`, 'tracking');
-          if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (${zoneLabel})`;
-          if (dom.handValGesture) dom.handValGesture.textContent = `MOVED → ${zoneLabel}`;
-          if (dom.chipTrackState) dom.chipTrackState.textContent = `FOLLOWING → ${zoneLabel}`;
-        }
+        // Compute stable 5-point palm center (mirrored coordinates)
+        const palmCenter = computePalmCenter(lm);
+        const gesture = detectHandGesture(lm);
+        const outcome = evaluateHandTracking(palmCenter.x, palmCenter.y, gesture);
+        applyTrackingOutcome(ctx, w, h, outcome, mirroredLandmarks);
       } else {
-        state.hand.hasHand = false;
-        // Reset anchor after hand leaves frame for > 400ms so next hand entry waits for movement again
-        if (state.hand.anchorX !== null && now - state.hand.lastHandSeenAt > 400) {
-          state.hand.anchorX = null;
-          state.hand.motionArmed = false;
-        }
-        if (dom.cameraGuide) dom.cameraGuide.classList.remove('hidden');
-        drawZoneOverlay(ctx, w, h, null, null, state.currentZone, false);
-        updateTrackingBadge('SEARCHING HAND', 'searching');
-        if (dom.handValGesture) dom.handValGesture.textContent = 'SHOW HAND...';
-        if (dom.chipTrackState) dom.chipTrackState.textContent = 'SEARCHING...';
+        handleHandLost(ctx, w, h, now);
       }
     } else {
       // Offline motion fallback if MediaPipe CDN couldn't load
@@ -879,36 +1353,14 @@ function runMotionFallbackFrame(ctx, video, w, h) {
     if (totalDiff > 1200) {
       const visualX = sumX / totalDiff / offW;
       const visualY = sumY / totalDiff / offH;
-      const zone = zoneFromHandMovement(visualX);
-
       state.hand.hasHand = true;
       state.hand.lastHandSeenAt = now;
       if (dom.cameraGuide) dom.cameraGuide.classList.add('hidden');
 
-      if (zone === null) {
-        drawZoneOverlay(ctx, w, h, { x: visualX, y: visualY }, null, state.currentZone, true);
-        updateTrackingBadge('HAND READY // MOVE', 'searching');
-        if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (HOLD)`;
-        if (dom.handValGesture) dom.handValGesture.textContent = 'WAITING FOR MOVE...';
-        if (dom.chipTrackState) dom.chipTrackState.textContent = 'WAIT FOR MOVEMENT';
-      } else {
-        moveTo(zone);
-        drawZoneOverlay(ctx, w, h, { x: visualX, y: visualY }, null, zone, false);
-
-        const zoneLabel = TARGETS[zone].name.toUpperCase();
-        updateTrackingBadge(`MOTION: ${zoneLabel}`, 'tracking');
-        if (dom.handMetricCoords) dom.handMetricCoords.textContent = `X: ${visualX.toFixed(2)} (${zoneLabel})`;
-        if (dom.handValGesture) dom.handValGesture.textContent = `MOVED → ${zoneLabel}`;
-        if (dom.chipTrackState) dom.chipTrackState.textContent = `FOLLOWING → ${zoneLabel}`;
-      }
+      const outcome = evaluateHandTracking(visualX, visualY);
+      applyTrackingOutcome(ctx, w, h, outcome, null);
     } else {
-      state.hand.hasHand = false;
-      if (state.hand.anchorX !== null && now - state.hand.lastHandSeenAt > 400) {
-        state.hand.anchorX = null;
-        state.hand.motionArmed = false;
-      }
-      drawZoneOverlay(ctx, w, h, null, null, state.currentZone, false);
-      updateTrackingBadge('SEARCHING HAND', 'searching');
+      handleHandLost(ctx, w, h, now);
     }
   }
 
@@ -1237,7 +1689,7 @@ async function startHandTracking() {
     state.hand.active = true;
     state.hand.lastVideoTime = -1;
 
-    if (dom.guideText) dom.guideText.textContent = 'MOVE HAND LEFT OR RIGHT TO TURN HEAD';
+    if (dom.guideText) dom.guideText.textContent = 'PLACE HAND IN CENTER | ✊ CLOSE HAND OR ☝️ SHOW "1" TO CENTER';
     updateTrackingBadge('SEARCHING HAND', 'searching');
     state.hand.rafId = requestAnimationFrame(trackFrame);
   } catch (err) {
@@ -1253,6 +1705,8 @@ function stopHandTracking() {
     cancelAnimationFrame(state.hand.rafId);
     state.hand.rafId = null;
   }
+  stopAllMovement();
+  resetHandReference();
   stopCameraStreamOnly();
   state.camera.activeDeviceId = null;
 }
@@ -1298,6 +1752,21 @@ window.addEventListener('DOMContentLoaded', () => {
   if (dom.chkHandMirror) {
     dom.chkHandMirror.addEventListener('change', (e) => {
       state.hand.mirrorX = e.target.checked;
+    });
+  }
+  if (dom.chkEnableTilt) {
+    dom.chkEnableTilt.addEventListener('change', (e) => {
+      state.hand.enableTilt = e.target.checked;
+      if (!state.hand.enableTilt) {
+        state.tilt = 90;
+        state.targetTilt = 90;
+        state.currentTiltZone = 'CENTER';
+        if (state.tiltTimer) {
+          clearInterval(state.tiltTimer);
+          state.tiltTimer = null;
+        }
+      }
+      update3DHeadAngles(state.pan, state.tilt);
     });
   }
   if (dom.selCameraSource) {
