@@ -55,12 +55,17 @@ const state = {
   pulseLoopActive: false,
   pulseIntervalId: null,
   pulseFrequency: 1.0,
+  pulseSpeed: parseInt(localStorage.getItem('robo_pulse_speed') || '20', 10),
 
   // Robotic Mouth Actuator (Pin 3)
   mouthActive: false,
 
-  // Air Blow Actuator (Mouth sweep + Pulse rhythm)
+  // Food Pipe Actuator
+  foodPipeOpen: false,
+
+  // Air Blow Actuator & Relay Cycle Configuration (Pin 4 Active LOW)
   blowActive: false,
+  blowInterval: parseFloat(localStorage.getItem('robo_blow_interval') || '2.0'),
 
   // Animation / Patrol state
   activeAnimation: null
@@ -123,12 +128,27 @@ const dom = {
   logsModal: document.getElementById('logsModal'),
   btnCloseLogs: document.getElementById('btnCloseLogs'),
 
+  // Header Logo & Admin Modal
+  headerLogoBadge: document.getElementById('headerLogoBadge'),
+  headerPulseRing: document.getElementById('headerPulseRing'),
+  adminModal: document.getElementById('adminModal'),
+  btnCloseAdmin: document.getElementById('btnCloseAdmin'),
+  btnBackFromAdmin: document.getElementById('btnBackFromAdmin'),
+  btnCloseAdminFooter: document.getElementById('btnCloseAdminFooter'),
+  adminCmdInput: document.getElementById('adminCmdInput'),
+  btnAdminSendCmd: document.getElementById('btnAdminSendCmd'),
+  btnAdminOpenSettings: document.getElementById('btnAdminOpenSettings'),
+  btnAdminOpenLogs: document.getElementById('btnAdminOpenLogs'),
+
   // Tabs & Viewports
   threeContainer: document.getElementById('threeContainer'),
 
   // Presets & Actuators
   btnMouthOn: document.getElementById('btnMouthOn'),
   btnMouthOff: document.getElementById('btnMouthOff'),
+  btnFoodPipe: document.getElementById('btnFoodPipe'),
+  foodPipeDot: document.getElementById('foodPipeDot'),
+  lblFoodPipeText: document.getElementById('lblFoodPipeText'),
   btnQuickMouthOn: document.getElementById('btnQuickMouthOn'),
   btnQuickMouthClose: document.getElementById('btnQuickMouthClose'),
   btnPatrol: document.getElementById('btnPatrol'),
@@ -142,6 +162,8 @@ const dom = {
   pulseStatusBadge: document.getElementById('pulseStatusBadge'),
   pulseToggleTitle: document.getElementById('pulseToggleTitle'),
   pulseToggleSub: document.getElementById('pulseToggleSub'),
+  lblPulseSpeed: document.getElementById('lblPulseSpeed'),
+  pillsPulseSpeed: document.querySelectorAll('.pill-pulse-speed'),
   btnMouthToggle: document.getElementById('btnMouthToggle'),
   mouthStatusBadge: document.getElementById('mouthStatusBadge'),
   mouthToggleTitle: document.getElementById('mouthToggleTitle'),
@@ -150,6 +172,17 @@ const dom = {
   btnBlowOn: document.getElementById('btnBlowOn'),
   btnBlowOff: document.getElementById('btnBlowOff'),
   btnPresetBlow: document.getElementById('btnPresetBlow'),
+  lblBlowDuration: document.getElementById('lblBlowDuration'),
+  lblLungsStep: document.getElementById('lblLungsStep'),
+  sliderBlowInterval: document.getElementById('sliderBlowInterval'),
+  numBlowInterval: document.getElementById('numBlowInterval'),
+  btnBlowDec: document.getElementById('btnBlowDec'),
+  btnBlowInc: document.getElementById('btnBlowInc'),
+  pillsBlowPreset: document.querySelectorAll('.pill-blow-preset'),
+  pillsLungsStep: document.querySelectorAll('.pill-lungs-step'),
+  blowRelayDot: document.getElementById('blowRelayDot'),
+  blowCycleText: document.getElementById('blowCycleText'),
+  blowCycleProgress: document.getElementById('blowCycleProgress'),
   speedPresets: document.querySelectorAll('.pill-speed'),
 
   // Customized Robot Q&A Elements
@@ -262,18 +295,18 @@ function setHeadPosition(newPan, newTilt, actionDir = 'MOVE') {
   state.tilt = Math.round(newTilt);
 
   // Update DOM sliders & HUD
-  dom.sliderPan.value = state.pan;
-  dom.sliderTilt.value = state.tilt;
-  dom.sliderPanLabel.textContent = `${state.pan}°`;
-  dom.sliderTiltLabel.textContent = `${state.tilt}°`;
-  dom.servoPanVal.textContent = `${state.pan}°`;
-  dom.servoTiltVal.textContent = `${state.tilt}°`;
+  if (dom.sliderPan) dom.sliderPan.value = state.pan;
+  if (dom.sliderTilt) dom.sliderTilt.value = state.tilt;
+  if (dom.sliderPanLabel) dom.sliderPanLabel.textContent = `${state.pan}°`;
+  if (dom.sliderTiltLabel) dom.sliderTiltLabel.textContent = `${state.tilt}°`;
+  if (dom.servoPanVal) dom.servoPanVal.textContent = `${state.pan}°`;
+  if (dom.servoTiltVal) dom.servoTiltVal.textContent = `${state.tilt}°`;
 
   // Calculated relative degrees from center (-90 to +90)
   const relYaw = (state.pan - 90).toFixed(1);
   const relPitch = (state.tilt - 90).toFixed(1);
-  dom.hudYaw.textContent = `${relYaw > 0 ? '+' : ''}${relYaw}°`;
-  dom.hudPitch.textContent = `${relPitch > 0 ? '+' : ''}${relPitch}°`;
+  if (dom.hudYaw) dom.hudYaw.textContent = `${relYaw > 0 ? '+' : ''}${relYaw}°`;
+  if (dom.hudPitch) dom.hudPitch.textContent = `${relPitch > 0 ? '+' : ''}${relPitch}°`;
 
   // Dispatch network command
   sendCommand({
@@ -435,25 +468,33 @@ if (dom.speedRange) {
 }
 
 // Step selector pills
-dom.stepSelector.addEventListener('click', (e) => {
-  if (e.target.classList.contains('pill')) {
-    dom.stepSelector.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
-    e.target.classList.add('active');
-    state.stepSize = parseInt(e.target.dataset.step, 10);
-    log(`[INFO] Step size set to ${state.stepSize}°`, 'info');
-  }
-});
+if (dom.stepSelector) {
+  dom.stepSelector.addEventListener('click', (e) => {
+    if (e.target.classList.contains('pill')) {
+      dom.stepSelector.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+      e.target.classList.add('active');
+      state.stepSize = parseInt(e.target.dataset.step, 10);
+      log(`[INFO] Step size set to ${state.stepSize}°`, 'info');
+    }
+  });
+}
 
 // Options toggles
-dom.chkContinuous.addEventListener('change', (e) => {
-  state.continuous = e.target.checked;
-});
-dom.chkInvertPitch.addEventListener('change', (e) => {
-  state.invertPitch = e.target.checked;
-});
-dom.chkInvertYaw.addEventListener('change', (e) => {
-  state.invertYaw = e.target.checked;
-});
+if (dom.chkContinuous) {
+  dom.chkContinuous.addEventListener('change', (e) => {
+    state.continuous = e.target.checked;
+  });
+}
+if (dom.chkInvertPitch) {
+  dom.chkInvertPitch.addEventListener('change', (e) => {
+    state.invertPitch = e.target.checked;
+  });
+}
+if (dom.chkInvertYaw) {
+  dom.chkInvertYaw.addEventListener('change', (e) => {
+    state.invertYaw = e.target.checked;
+  });
+}
 
 // ============================================================================
 // Autonomous Presets & Sequences
@@ -475,15 +516,23 @@ dom.chkInvertYaw.addEventListener('change', (e) => {
   }
 });
 
+if (dom.btnFoodPipe) {
+  dom.btnFoodPipe.addEventListener('click', () => {
+    toggleFoodPipe();
+  });
+}
+
 if (dom.btnPatrolTilt) {
   dom.btnPatrolTilt.addEventListener('click', () => {
     toggleTiltPatrolScan();
   });
 }
 
-dom.btnPatrol.addEventListener('click', () => {
-  togglePatrolScan();
-});
+if (dom.btnPatrol) {
+  dom.btnPatrol.addEventListener('click', () => {
+    togglePatrolScan();
+  });
+}
 
 if (dom.btnPresetCenter) {
   dom.btnPresetCenter.addEventListener('click', () => {
@@ -633,6 +682,7 @@ function emergencyStop() {
   stopContinuousMovement();
   stopPulseLoop();
   if (state.mouthActive) toggleMouth(false);
+  if (state.foodPipeOpen) toggleFoodPipe(false);
   sendCommand({
     cmd: 'ESTOP',
     action: 'EMERGENCY_STOP',
@@ -688,6 +738,74 @@ function triggerNeckPulse() {
 }
 
 /**
+ * Sets the Blow On/Off Cycle duration in seconds.
+ * Synchronizes the UI slider, stepper, preset pills, and transmits INTERVAL <sec> to Arduino/ESP32.
+ * @param {number|string} sec - Interval duration in seconds (e.g. 1.0, 2.0, 3.0)
+ * @param {boolean} notifyHardware - Whether to transmit command over Serial
+ */
+function setBlowInterval(sec, notifyHardware = true) {
+  let val = parseFloat(sec);
+  if (isNaN(val) || val <= 0) val = 2.0;
+  val = Math.max(0.5, Math.min(30.0, Math.round(val * 10) / 10)); // 0.5s to 30.0s clamp
+
+  state.blowInterval = val;
+  try {
+    localStorage.setItem('robo_blow_interval', val.toString());
+  } catch {}
+
+  let stepLabel = 'STEP 2';
+  if (Math.abs(val - 1.0) < 0.1) stepLabel = 'STEP 1';
+  else if (Math.abs(val - 2.0) < 0.1) stepLabel = 'STEP 2';
+  else if (Math.abs(val - 3.0) < 0.1) stepLabel = 'STEP 3';
+  else stepLabel = `${val.toFixed(1)}s`;
+
+  if (dom.lblLungsStep) {
+    dom.lblLungsStep.textContent = stepLabel;
+  }
+  if (dom.lblBlowDuration) {
+    dom.lblBlowDuration.textContent = val.toFixed(1) + 's';
+  }
+  if (dom.sliderBlowInterval && Math.abs(parseFloat(dom.sliderBlowInterval.value) - val) > 0.05) {
+    dom.sliderBlowInterval.value = val;
+  }
+  if (dom.numBlowInterval && Math.abs(parseFloat(dom.numBlowInterval.value) - val) > 0.05) {
+    dom.numBlowInterval.value = val;
+  }
+
+  // Update preset pills active highlight (both left panel and right panel)
+  if (dom.pillsBlowPreset) {
+    dom.pillsBlowPreset.forEach(pill => {
+      const pSec = parseFloat(pill.dataset.sec);
+      if (Math.abs(pSec - val) < 0.05) {
+        pill.classList.add('active');
+      } else {
+        pill.classList.remove('active');
+      }
+    });
+  }
+  if (dom.pillsLungsStep) {
+    dom.pillsLungsStep.forEach(pill => {
+      const pSec = parseFloat(pill.dataset.sec);
+      if (Math.abs(pSec - val) < 0.05) {
+        pill.classList.add('active');
+      } else {
+        pill.classList.remove('active');
+      }
+    });
+  }
+
+  if (notifyHardware) {
+    sendCommand({
+      cmd: `INTERVAL ${val}`,
+      action: 'SET_BLOW_INTERVAL',
+      interval: val,
+      timestamp: Date.now()
+    });
+    log(`[CONFIG] ⏱️ Blow cycle duration set to ${val.toFixed(1)}s`, 'info');
+  }
+}
+
+/**
  * Starts continuous Air Blow / Wind Exhale action (BLOW ON).
  * Moves the head forward, shoots continuous 3D wind puff rings, plays whoosh audio,
  * and sends BLOW ON command to Arduino/ESP32.
@@ -706,17 +824,26 @@ function startBlowAction() {
   if (dom.btnBlow) dom.btnBlow.classList.add('blowing');
   if (dom.btnPresetBlow) dom.btnPresetBlow.classList.add('blowing');
 
+  if (dom.blowRelayDot) {
+    dom.blowRelayDot.className = 'strip-dot relay-on';
+  }
+  if (dom.blowCycleText) {
+    dom.blowCycleText.className = 'strip-label active-on';
+    dom.blowCycleText.textContent = `BLOWING (ON) - ${(state.blowInterval || 2.0).toFixed(1)}s`;
+  }
+
   playBlowSound();
 
   sendCommand({
     cmd: 'BLOW ON',
     action: 'BLOW_ON',
+    interval: state.blowInterval || 2.0,
     pan: state.pan,
     tilt: state.tilt,
     timestamp: Date.now()
   });
 
-  log('[ACTION] 💨 Air Blow turned ON (Continuous)', 'tx');
+  log(`[ACTION] 💨 Air Blow turned ON (Cycle: ${(state.blowInterval || 2.0).toFixed(1)}s)`, 'tx');
 }
 
 /**
@@ -737,6 +864,17 @@ function stopBlowAction() {
   }
   if (dom.btnBlow) dom.btnBlow.classList.remove('blowing');
   if (dom.btnPresetBlow) dom.btnPresetBlow.classList.remove('blowing');
+
+  if (dom.blowRelayDot) {
+    dom.blowRelayDot.className = 'strip-dot';
+  }
+  if (dom.blowCycleText) {
+    dom.blowCycleText.className = 'strip-label';
+    dom.blowCycleText.textContent = 'RELAY: IDLE (OFF)';
+  }
+  if (dom.blowCycleProgress) {
+    dom.blowCycleProgress.style.width = '0%';
+  }
 
   if (blowRings) {
     blowRings.forEach(r => {
@@ -875,6 +1013,55 @@ function stopPulseLoop() {
   if (dom.pulseToggleSub) dom.pulseToggleSub.textContent = 'CLICK TO TURN ON';
 }
 
+/**
+ * Sets Pulse Servo Speed (1: HIGH, 20: MEDIUM, 35: LOW).
+ * Synchronizes UI pills and transmits PULSE SPEED <val> to Arduino/ESP32.
+ */
+function setPulseSpeed(speedVal, notifyHardware = true) {
+  let val = parseInt(speedVal, 10);
+  if (isNaN(val) || val < 1) val = 20;
+
+  state.pulseSpeed = val;
+  try {
+    localStorage.setItem('robo_pulse_speed', val.toString());
+  } catch {}
+
+  let labelText = 'MEDIUM';
+  if (val === 1) labelText = 'HIGH';
+  else if (val === 35) labelText = 'LOW';
+  else labelText = `${val} ms`;
+
+  if (dom.lblPulseSpeed) {
+    dom.lblPulseSpeed.textContent = labelText;
+  }
+
+  if (dom.pillsPulseSpeed) {
+    dom.pillsPulseSpeed.forEach(pill => {
+      const pSpeed = parseInt(pill.dataset.speed, 10);
+      if (pSpeed === val) {
+        pill.classList.add('active');
+      } else {
+        pill.classList.remove('active');
+      }
+    });
+  }
+
+  // Adjust live interval if loop active
+  if (state.pulseLoopActive) {
+    startPulseInterval();
+  }
+
+  if (notifyHardware) {
+    sendCommand({
+      cmd: `PULSE SPEED ${val}`,
+      action: 'SET_PULSE_SPEED',
+      speed: val,
+      timestamp: Date.now()
+    });
+    log(`[PULSE] 💓 Pulse speed set to ${labelText} (Command: PULSE SPEED ${val})`, 'info');
+  }
+}
+
 // Master Mouth ON / OFF Actuator Handler (Pin 3 Servo)
 function toggleMouth(forceState = null) {
   const shouldBeActive = forceState !== null ? forceState : !state.mouthActive;
@@ -964,6 +1151,42 @@ function playMouthSound(isOpen) {
   } catch (e) {}
 }
 
+/**
+ * Master Food Pipe Actuator Handler.
+ * Toggles Food Pipe Open / Closed without affecting the 3D middle face.
+ * Sends "FOOD PIPE OPEN" / "FOOD PIPE CLOSE" over Serial.
+ * @param {boolean|null} forceState - Optional explicit state (true: open, false: close)
+ */
+function toggleFoodPipe(forceState = null) {
+  const shouldOpen = forceState !== null ? forceState : !state.foodPipeOpen;
+  state.foodPipeOpen = shouldOpen;
+
+  if (dom.btnFoodPipe) {
+    dom.btnFoodPipe.classList.toggle('active', state.foodPipeOpen);
+  }
+  if (dom.lblFoodPipeText) {
+    dom.lblFoodPipeText.textContent = state.foodPipeOpen ? 'FOOD PIPE: OPEN' : 'FOOD PIPE: CLOSED';
+  } else if (dom.btnFoodPipe) {
+    dom.btnFoodPipe.textContent = state.foodPipeOpen ? 'FOOD PIPE: OPEN' : 'FOOD PIPE: CLOSED';
+  }
+
+  const cmd = state.foodPipeOpen ? 'FOOD PIPE OPEN' : 'FOOD PIPE CLOSE';
+  sendSerialData(cmd + '\n');
+  sendCommand({
+    cmd: 'FOOD_PIPE',
+    state: state.foodPipeOpen ? 'OPEN' : 'CLOSE',
+    timestamp: Date.now()
+  });
+
+  if (state.foodPipeOpen) {
+    playMouthSound(true);
+    log('[ACTION] 🫁 Food pipe OPENED (Command: FOOD PIPE OPEN)', 'tx');
+  } else {
+    playMouthSound(false);
+    log('[ACTION] 🫁 Food pipe CLOSED (Command: FOOD PIPE CLOSE)', 'warn');
+  }
+}
+
 // Right Column Pulse & Speed Listeners
 if (dom.btnPulseToggle) {
   dom.btnPulseToggle.addEventListener('click', () => {
@@ -988,6 +1211,65 @@ if (dom.btnBlowOff) {
     stopBlowAction();
   });
 }
+
+// Configurable Blow Interval Controls & Presets
+if (dom.sliderBlowInterval) {
+  dom.sliderBlowInterval.addEventListener('input', (e) => {
+    setBlowInterval(e.target.value, true);
+  });
+}
+
+if (dom.numBlowInterval) {
+  dom.numBlowInterval.addEventListener('change', (e) => {
+    setBlowInterval(e.target.value, true);
+  });
+}
+
+if (dom.btnBlowDec) {
+  dom.btnBlowDec.addEventListener('click', () => {
+    setBlowInterval((state.blowInterval || 2.0) - 0.5, true);
+  });
+}
+
+if (dom.btnBlowInc) {
+  dom.btnBlowInc.addEventListener('click', () => {
+    setBlowInterval((state.blowInterval || 2.0) + 0.5, true);
+  });
+}
+
+if (dom.pillsBlowPreset) {
+  dom.pillsBlowPreset.forEach(pill => {
+    pill.addEventListener('click', () => {
+      const sec = parseFloat(pill.dataset.sec);
+      setBlowInterval(sec, true);
+    });
+  });
+}
+
+if (dom.pillsLungsStep) {
+  dom.pillsLungsStep.forEach(pill => {
+    pill.addEventListener('click', () => {
+      const sec = parseFloat(pill.dataset.sec);
+      setBlowInterval(sec, true);
+    });
+  });
+}
+
+// Initialize Blow Interval UI to current saved state
+setBlowInterval(state.blowInterval || 2.0, false);
+
+// Pulse Speed Preset Pills Handler (HIGH: 1ms, MEDIUM: 20ms, LOW: 35ms)
+if (dom.pillsPulseSpeed) {
+  dom.pillsPulseSpeed.forEach(pill => {
+    pill.addEventListener('click', () => {
+      const spd = parseInt(pill.dataset.speed, 10);
+      setPulseSpeed(spd, true);
+    });
+  });
+}
+
+// Initialize Pulse Speed UI to current saved state
+setPulseSpeed(state.pulseSpeed || 20, false);
 
 [dom.btnBlow, dom.btnPresetBlow].forEach(btn => {
   if (btn && btn !== dom.btnBlowOn && btn !== dom.btnBlowOff) {
@@ -1096,6 +1378,7 @@ async function connectSerial() {
     // Wait 1.2s for board bootloader reset to finish before first sync
     setTimeout(() => {
       sendSerialData('HOME\n');
+      sendSerialData(`PULSE SPEED ${state.pulseSpeed || 20}\n`);
     }, 1200);
 
     startSerialRead();
@@ -1148,6 +1431,26 @@ async function startSerialRead() {
           state.stats.recv++;
           if (dom.statRecv) dom.statRecv.textContent = state.stats.recv;
           log(`[ARDUINO] ${value.trim()}`, 'rx');
+
+          const upper = value.toUpperCase();
+          if (upper.includes('RELAY ON')) {
+            if (dom.blowRelayDot) dom.blowRelayDot.className = 'strip-dot relay-on';
+            if (dom.blowCycleText && state.blowActive) {
+              dom.blowCycleText.className = 'strip-label active-on';
+            }
+          } else if (upper.includes('RELAY OFF')) {
+            if (dom.blowRelayDot) dom.blowRelayDot.className = 'strip-dot relay-off-cycle';
+            if (dom.blowCycleText && state.blowActive) {
+              dom.blowCycleText.className = 'strip-label active-off';
+            }
+          } else if (upper.includes('RELAY STOPPED')) {
+            if (dom.blowRelayDot) dom.blowRelayDot.className = 'strip-dot';
+            if (dom.blowCycleText) {
+              dom.blowCycleText.className = 'strip-label';
+              dom.blowCycleText.textContent = 'RELAY: IDLE (OFF)';
+            }
+            if (dom.blowCycleProgress) dom.blowCycleProgress.style.width = '0%';
+          }
         }
       }
     } catch (err) {
@@ -1310,13 +1613,20 @@ function sendCommand(payload) {
     } else if (payload.cmd === 'PULSE') {
       sendSerialData('PULSE ON\n');
       setTimeout(() => sendSerialData('PULSE OFF\n'), 800);
+    } else if (payload.action === 'SET_PULSE_SPEED' || (payload.cmd && payload.cmd.startsWith('PULSE SPEED'))) {
+      const spd = payload.speed !== undefined ? payload.speed : (state.pulseSpeed || 20);
+      sendSerialData(`PULSE SPEED ${spd}\n`);
     } else if (payload.cmd === 'BLOW' || payload.cmd === 'BLOW ON' || payload.action === 'BLOW_ON') {
-      sendSerialData('BLOW ON\n1\n');
+      const sec = payload.interval || state.blowInterval || 2.0;
+      sendSerialData(`INTERVAL ${sec}\n1\n`);
     } else if (payload.cmd === 'BLOW OFF' || payload.action === 'BLOW_OFF') {
-      sendSerialData('BLOW OFF\n0\n');
+      sendSerialData('0\n');
       setTimeout(() => {
         sendSerialData('MOUTH OFF\nPULSE OFF\n');
       }, 50);
+    } else if (payload.action === 'SET_BLOW_INTERVAL' || (payload.cmd && payload.cmd.startsWith('INTERVAL'))) {
+      const sec = payload.interval || state.blowInterval || 2.0;
+      sendSerialData(`INTERVAL ${sec}\n`);
     } else if (payload.cmd === 'ESTOP') {
       sendSerialData('ESTOP\n');
     } else if (payload.action === 'UP') {
@@ -1416,7 +1726,7 @@ function updateConnectionUI(status, label) {
     dom.btnQuickConnect.textContent = 'CONNECTING...';
     dom.btnQuickConnect.classList.remove('connected');
   } else {
-    dom.btnQuickConnect.textContent = '⚡ CONNECT';
+    dom.btnQuickConnect.textContent = 'CONNECT USB';
     dom.btnQuickConnect.classList.remove('connected');
   }
 }
@@ -1446,7 +1756,7 @@ if (dom.btnCloseLogs && dom.logsModal) {
 }
 
 // Close modals on backdrop click
-[dom.settingsModal, dom.logsModal].forEach(modal => {
+[dom.settingsModal, dom.logsModal, dom.adminModal].forEach(modal => {
   if (modal) {
     modal.addEventListener('click', (e) => {
       if (e.target === modal) {
@@ -1455,6 +1765,122 @@ if (dom.btnCloseLogs && dom.logsModal) {
     });
   }
 });
+
+// ============================================================================
+// Admin Panel Handlers (Triggered by double-tapping Header Left Pulse Ring)
+// ============================================================================
+function openAdminPanel() {
+  if (!dom.adminModal) return;
+  dom.adminModal.classList.add('active');
+  dom.adminModal.style.setProperty('display', 'flex', 'important');
+  if (dom.headerLogoBadge) {
+    dom.headerLogoBadge.classList.add('pulse-tapped');
+    setTimeout(() => {
+      if (dom.headerLogoBadge) dom.headerLogoBadge.classList.remove('pulse-tapped');
+    }, 450);
+  }
+  log('[ADMIN] 🛡️ Admin Panel opened via Header Pulse Ring double-tap (Root Access)', 'warn');
+}
+
+function closeAdminPanel() {
+  if (dom.adminModal) {
+    dom.adminModal.classList.remove('active');
+    dom.adminModal.style.setProperty('display', 'none', 'important');
+    log('[ADMIN] 🛩️ Returned to 3D Cockpit Mission Control', 'info');
+  }
+}
+
+// Double-tap & Double-click on Header Left Logo Badge / Pulse Ring
+let lastLogoTap = 0;
+if (dom.headerLogoBadge) {
+  dom.headerLogoBadge.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    openAdminPanel();
+  });
+
+  // Touch & pointer double-tap (works on touchscreen & mouse within 420ms)
+  dom.headerLogoBadge.addEventListener('pointerdown', (e) => {
+    const now = performance.now();
+    if (now - lastLogoTap < 420) {
+      e.preventDefault();
+      openAdminPanel();
+      lastLogoTap = 0;
+    } else {
+      lastLogoTap = now;
+    }
+  });
+}
+
+// Close Admin Panel Buttons (Back to Cockpit / Close triggers)
+[dom.btnCloseAdmin, dom.btnCloseAdminFooter, dom.btnBackFromAdmin].forEach(btn => {
+  if (btn) {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeAdminPanel();
+    });
+  }
+});
+
+// Escape key listener to close full-page admin overlay
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && dom.adminModal && (dom.adminModal.classList.contains('active') || dom.adminModal.style.display !== 'none')) {
+    e.preventDefault();
+    closeAdminPanel();
+  }
+});
+
+// Admin Direct Actuator Testing Buttons
+document.querySelectorAll('.btn-admin-action').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const cmd = btn.dataset.cmd;
+    if (cmd) {
+      sendSerialData(cmd + '\n');
+      log(`[ADMIN DIRECT] ⚙️ Sent command: ${cmd}`, 'tx');
+    }
+  });
+});
+
+// Admin Quick Inject Command Chips
+document.querySelectorAll('.btn-chip-inject').forEach(chip => {
+  chip.addEventListener('click', () => {
+    if (dom.adminCmdInput) {
+      dom.adminCmdInput.value = chip.dataset.val;
+      dom.adminCmdInput.focus();
+    }
+  });
+});
+
+// Admin Raw Serial Command Dispatcher
+if (dom.btnAdminSendCmd && dom.adminCmdInput) {
+  const sendAdminRaw = () => {
+    const raw = dom.adminCmdInput.value.trim();
+    if (!raw) return;
+    sendSerialData(raw + '\n');
+    log(`[ADMIN RAW] 📡 Dispatched: ${raw}`, 'tx');
+    dom.adminCmdInput.value = '';
+  };
+
+  dom.btnAdminSendCmd.addEventListener('click', sendAdminRaw);
+  dom.adminCmdInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sendAdminRaw();
+  });
+}
+
+// Admin Navigation Quick Links
+if (dom.btnAdminOpenSettings) {
+  dom.btnAdminOpenSettings.addEventListener('click', () => {
+    closeAdminPanel();
+    if (dom.settingsModal) dom.settingsModal.style.display = 'flex';
+  });
+}
+
+if (dom.btnAdminOpenLogs) {
+  dom.btnAdminOpenLogs.addEventListener('click', () => {
+    closeAdminPanel();
+    if (dom.logsModal) dom.logsModal.style.display = 'flex';
+  });
+}
 
 // Manual command sender
 if (dom.btnSendCustom) {
@@ -1966,11 +2392,13 @@ function animate() {
     visorLight.intensity = 1.2 + Math.sin(now * 0.004) * 0.4;
   }
 
-  // Handle Dynamic Air Blow / Wind Puff Animation
+  // Handle Dynamic Air Blow / Wind Puff Animation & Active Relay Cycle
   if (blowActionActive) {
     const elapsed = now - blowStartTime;
+    const intervalMs = (state.blowInterval || 2.0) * 1000;
+    const totalCycleMs = intervalMs * 2;
 
-    if (!state.blowActive && elapsed >= BLOW_DURATION) {
+    if (!state.blowActive && elapsed >= intervalMs) {
       blowActionActive = false;
       blowRings.forEach(r => {
         r.material.opacity = 0;
@@ -1980,24 +2408,67 @@ function animate() {
       if (robotHeadGroup) {
         robotHeadGroup.rotation.x = currentEulerPitch;
       }
+      if (dom.blowRelayDot) dom.blowRelayDot.className = 'strip-dot';
+      if (dom.blowCycleText) {
+        dom.blowCycleText.className = 'strip-label';
+        dom.blowCycleText.textContent = 'RELAY: IDLE (OFF)';
+      }
+      if (dom.blowCycleProgress) dom.blowCycleProgress.style.width = '0%';
     } else {
-      const loopElapsed = state.blowActive ? (elapsed % BLOW_DURATION) : elapsed;
-      const progress = loopElapsed / BLOW_DURATION;
-      const wave = Math.sin(progress * Math.PI);
+      const cycleElapsed = elapsed % totalCycleMs;
+      const isBlowPhase = cycleElapsed < intervalMs;
+      const phaseElapsed = isBlowPhase ? cycleElapsed : (cycleElapsed - intervalMs);
+      const phaseProgress = phaseElapsed / intervalMs;
+      const phaseRemaining = ((intervalMs - phaseElapsed) / 1000).toFixed(1);
 
-      // Head tilts forward slightly during blow gesture
-      if (robotHeadGroup) {
-        robotHeadGroup.rotation.x = currentEulerPitch - wave * 0.14;
+      // Update live status strip and meter
+      if (dom.blowCycleProgress) {
+        dom.blowCycleProgress.style.width = `${Math.min(100, Math.round(phaseProgress * 100))}%`;
       }
 
-      // Air blow rings expand and travel outward from the mouth (+Z)
-      blowRings.forEach((r, idx) => {
-        const ringProgress = Math.max(0, Math.min(1, (progress * 1.5) - (idx * 0.22)));
-        const rScale = 1.0 + ringProgress * 3.5;
-        r.scale.set(rScale, rScale, 1.0);
-        r.position.z = ringProgress * 1.7;
-        r.material.opacity = Math.sin(ringProgress * Math.PI) * 0.75;
-      });
+      if (isBlowPhase) {
+        if (dom.blowRelayDot && !dom.blowRelayDot.classList.contains('relay-on')) {
+          dom.blowRelayDot.className = 'strip-dot relay-on';
+        }
+        if (dom.blowCycleText) {
+          dom.blowCycleText.className = 'strip-label active-on';
+          dom.blowCycleText.textContent = `BLOWING (ON) - ${phaseRemaining}s`;
+        }
+
+        const wave = Math.sin(phaseProgress * Math.PI);
+        if (robotHeadGroup) {
+          robotHeadGroup.rotation.x = currentEulerPitch - wave * 0.14;
+        }
+
+        // Air blow rings expand and travel outward from the mouth (+Z)
+        const ringLoopDur = Math.min(800, intervalMs);
+        const ringProg = (phaseElapsed % ringLoopDur) / ringLoopDur;
+        blowRings.forEach((r, idx) => {
+          const rProg = Math.max(0, Math.min(1, (ringProg * 1.5) - (idx * 0.22)));
+          const rScale = 1.0 + rProg * 3.5;
+          r.scale.set(rScale, rScale, 1.0);
+          r.position.z = rProg * 1.7;
+          r.material.opacity = Math.sin(rProg * Math.PI) * 0.75;
+        });
+      } else {
+        if (dom.blowRelayDot && !dom.blowRelayDot.classList.contains('relay-off-cycle')) {
+          dom.blowRelayDot.className = 'strip-dot relay-off-cycle';
+        }
+        if (dom.blowCycleText) {
+          dom.blowCycleText.className = 'strip-label active-off';
+          dom.blowCycleText.textContent = `CYCLE PAUSE (OFF) - ${phaseRemaining}s`;
+        }
+
+        blowRings.forEach(r => {
+          r.material.opacity = 0;
+          r.scale.set(1, 1, 1);
+          r.position.z = 0;
+        });
+
+        if (robotHeadGroup) {
+          robotHeadGroup.rotation.x = currentEulerPitch;
+        }
+      }
     }
   }
 
@@ -2176,10 +2647,10 @@ function setupQAEngine() {
     dom.qaVoiceBtn.addEventListener('click', () => {
       voiceEnabled = !voiceEnabled;
       if (voiceEnabled) {
-        dom.qaVoiceBtn.textContent = '🔊 VOICE ON';
+        dom.qaVoiceBtn.textContent = 'VOICE AUDIO: ON';
         dom.qaVoiceBtn.classList.remove('muted');
       } else {
-        dom.qaVoiceBtn.textContent = '🔇 VOICE OFF';
+        dom.qaVoiceBtn.textContent = 'VOICE AUDIO: OFF';
         dom.qaVoiceBtn.classList.add('muted');
         if (window.speechSynthesis) window.speechSynthesis.cancel();
         stopMouthSpeaking();
@@ -2460,7 +2931,7 @@ function updateVoiceUI(active) {
     dom.btnVoiceMic.classList.toggle('listening', active);
   }
   if (dom.voiceMicTitle) {
-    dom.voiceMicTitle.textContent = active ? '🎙️ LISTENING (SPEAK NOW)...' : '🎙️ VOICE CONTROL: OFF';
+    dom.voiceMicTitle.textContent = active ? 'LISTENING (SPEAK NOW)...' : 'VOICE CONTROL: OFF';
   }
   if (dom.voiceMicSub) {
     dom.voiceMicSub.textContent = active ? 'SAY "TURN RIGHT", "TURN LEFT", "LOOK UP" OR ASK A QUESTION' : 'CLICK TO START LISTENING';
@@ -2471,7 +2942,7 @@ function updateVoiceUI(active) {
   }
   if (dom.btnHeaderMic) {
     dom.btnHeaderMic.classList.toggle('active', active);
-    dom.btnHeaderMic.textContent = active ? '🎙️ LISTENING' : '🎙️ VOICE';
+    dom.btnHeaderMic.textContent = active ? 'LISTENING' : 'VOICE';
   }
   if (dom.qaStatusTag && !isAnswering) {
     dom.qaStatusTag.textContent = active ? 'LISTENING' : 'READY';
@@ -2586,22 +3057,76 @@ function handleVoiceCommand(rawText) {
   if (text.includes('close mouth') || text.includes('mouth off') || text.includes('mouth close')) {
     toggleMouth(false);
     speakVoiceFeedback("Mouth closed");
-    log('[VOICE COMMAND] 🤐 Closed mouth (Pin 3)', 'rx');
+    log('[VOICE COMMAND] Closed mouth (Pin 3)', 'rx');
     return;
   }
 
-  // 4. Special Actions
-  if (text.includes('blow off') || text.includes('stop blow') || text.includes('wind off')) {
+  // Food Pipe Commands
+  if (text.includes('food pipe open') || text.includes('open food pipe')) {
+    toggleFoodPipe(true);
+    speakVoiceFeedback("Food pipe opened");
+    log('[VOICE COMMAND] Opened food pipe', 'rx');
+    return;
+  }
+
+  if (text.includes('food pipe close') || text.includes('close food pipe') || text.includes('food pipe off')) {
+    toggleFoodPipe(false);
+    speakVoiceFeedback("Food pipe closed");
+    log('[VOICE COMMAND] Closed food pipe', 'rx');
+    return;
+  }
+
+  // 4. Special Actions: Lungs / Air Blower
+  if (text.includes('blow off') || text.includes('stop blow') || text.includes('lungs off') || text.includes('stop lungs')) {
     stopBlowAction();
-    speakVoiceFeedback("Air blow off");
-    log('[VOICE COMMAND] 🛑 Air blow turned OFF', 'rx');
+    speakVoiceFeedback("Lungs off");
+    log('[VOICE COMMAND] Lungs turned OFF', 'rx');
     return;
   }
 
-  if (text.includes('blow') || text.includes('blow on') || text.includes('blow air') || text.includes('wind')) {
+  if (text.includes('lungs step 1') || text.includes('lung step 1') || text.includes('lungs 1')) {
+    setBlowInterval(1.0, true);
+    speakVoiceFeedback("Lungs step 1");
+    log('[VOICE COMMAND] Lungs set to STEP 1 (1s)', 'rx');
+    return;
+  }
+  if (text.includes('lungs step 2') || text.includes('lung step 2') || text.includes('lungs 2')) {
+    setBlowInterval(2.0, true);
+    speakVoiceFeedback("Lungs step 2");
+    log('[VOICE COMMAND] Lungs set to STEP 2 (2s)', 'rx');
+    return;
+  }
+  if (text.includes('lungs step 3') || text.includes('lung step 3') || text.includes('lungs 3')) {
+    setBlowInterval(3.0, true);
+    speakVoiceFeedback("Lungs step 3");
+    log('[VOICE COMMAND] Lungs set to STEP 3 (3s)', 'rx');
+    return;
+  }
+
+  if (text.includes('blow') || text.includes('blow on') || text.includes('blow air') || text.includes('lungs on') || text.includes('lungs') || text.includes('breathe')) {
     startBlowAction();
-    speakVoiceFeedback("Air blow on");
-    log('[VOICE COMMAND] 💨 Air blow turned ON', 'rx');
+    speakVoiceFeedback("Lungs on");
+    log('[VOICE COMMAND] Lungs turned ON', 'rx');
+    return;
+  }
+
+  // Pulse Speed Controls (HIGH: 1ms, MEDIUM: 20ms, LOW: 35ms)
+  if (text.includes('pulse high') || text.includes('pulse speed high') || text.includes('fast pulse') || text.includes('high pulse')) {
+    setPulseSpeed(1, true);
+    speakVoiceFeedback("Pulse speed set to high");
+    log('[VOICE COMMAND] Pulse speed set to HIGH', 'rx');
+    return;
+  }
+  if (text.includes('pulse medium') || text.includes('pulse speed medium') || text.includes('normal pulse') || text.includes('medium pulse')) {
+    setPulseSpeed(20, true);
+    speakVoiceFeedback("Pulse speed set to medium");
+    log('[VOICE COMMAND] Pulse speed set to MEDIUM', 'rx');
+    return;
+  }
+  if (text.includes('pulse low') || text.includes('pulse speed low') || text.includes('slow pulse') || text.includes('low pulse')) {
+    setPulseSpeed(35, true);
+    speakVoiceFeedback("Pulse speed set to low");
+    log('[VOICE COMMAND] Pulse speed set to LOW', 'rx');
     return;
   }
 

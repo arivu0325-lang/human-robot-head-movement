@@ -90,27 +90,32 @@ d:\head movement\
 | **Mouth Servo (MOUTH ON / OFF)** | Orange / Yellow | **PIN 3** | 5V | GND |
 | **Pulse Servo 1 (Heartbeat SG90)** | Orange / Yellow | **PIN 2** | 5V | GND |
 | **Pulse Servo 2 (Heartbeat SG90)** | Orange / Yellow | **PIN 12** | 5V | GND |
-| **Air Blower / Breath Motor (Relay)** | Relay Signal (IN) | **PIN 4** | 5V / External | GND |
+| **Air Blower / Breath Motor (Relay)** | Relay Signal (IN - Active LOW) | **PIN 4** | 5V / External | GND |
 
 ### 🎛️ Serial Command Reference (9600 Baud)
-| Command | Action | Servo Target |
+| Command | Action | Servo / Relay Target |
 |---|---|---|
-| `UP` | Main Servo Tilts Up | Pin 9 -> 140° |
-| `DOWN` | Main Servo Tilts Down | Pin 9 -> 65° |
+| `UP` | Main Servo Tilts Up | Pin 9 -> 50° |
+| `DOWN` | Main Servo Tilts Down | Pin 9 -> 120° |
 | `LEFT` | Third Servo Pans Left | Pin 6 -> 140° |
 | `RIGHT` | Third Servo Pans Right | Pin 6 -> 50° |
 | `HOME` or `CENTER` | Resets to Neutral | Pin 6 -> 90°, Pin 9 -> 90° |
 | `MOUTH ON` | Activates Continuous Mouth Movement | Pin 3 sweeps 90° - 130° |
 | `MOUTH OFF` | Stops Mouth Movement | Pin 3 holds position |
+| `FOOD PIPE OPEN` | Opens Food Pipe Actuator | Toggles Food Pipe state to OPEN |
+| `FOOD PIPE CLOSE` | Closes Food Pipe Actuator | Toggles Food Pipe state to CLOSED |
 | `PULSE ON` | Activates Dual SG90 Heartbeat Pulse | Pins 2 & 12 pulse 0° - 20° |
 | `PULSE OFF` | Deactivates Pulse | Pins 2 & 12 hold 0° |
+| `PULSE SPEED 1` | Sets Pulse Speed to **HIGH** | Pins 2 & 12 step delay = 1 ms (Fastest) |
+| `PULSE SPEED 20` | Sets Pulse Speed to **MEDIUM** (Default) | Pins 2 & 12 step delay = 20 ms (Normal) |
+| `PULSE SPEED 35` | Sets Pulse Speed to **LOW** | Pins 2 & 12 step delay = 35 ms (Gentle) |
 | `ESTOP` | Emergency Stop | Halts all active loops, relay OFF, homes servos |
 | `POS <pan> <tilt>` | Real-Time Hand Tracking / Dual Coordinate | Pin 6 -> <pan>°, Pin 9 -> <tilt>° |
 | `TILT <angle>` | Direct Tilt Positioning (0-180°) | Pin 9 -> <angle>° |
 | `PAN <angle>` | Direct Pan Positioning (0-180°) | Pin 6 -> <angle>° |
-| `1` or `BLOW ON` | Blower Relay ON, Mouth Sweep & Wind Pulse | Pin 4 HIGH, Pin 3 sweep, Pins 2 & 12 pulse |
-| `0` or `BLOW OFF` | Blower Relay OFF, Mouth & Pulse Stop | Pin 4 LOW, Pin 3 hold, Pins 2 & 12 to 0° |
-| `BLOW` | Legacy Air Blow Trigger | Pin 4 HIGH, Pin 3 sweep, Pins 2 & 12 pulse |
+| `1` or `BLOW ON` | Starts Relay Blinking Cycle (Blower ON) | Pin 4 LOW (Active LOW), Mouth & Pulse activate |
+| `0` or `BLOW OFF` | Stops Relay Blinking Cycle (Blower OFF) | Pin 4 HIGH (Active LOW OFF), Mouth & Pulse stop |
+| `INTERVAL <sec>` | Configures Blow Cycle Duration (e.g. `INTERVAL 2`, `INTERVAL 3`) | Sets `relayInterval` to `<sec> * 1000` ms |
 
 > ⚠️ **Important**: Always power servos from an external 5V-6V power supply (2A-4A) and connect the ground (GND) of the external power supply to the Arduino GND.
 

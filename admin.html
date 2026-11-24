@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RoboHead // Full-Page Hardware Admin Command Center</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, rgba(2, 6, 12, 0.98) 65%);
+      color: #fff;
+      font-family: var(--font-body);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .admin-standalone-header {
+      padding: 14px 28px;
+      background: rgba(4, 10, 20, 0.95);
+      border-bottom: 1px solid rgba(0, 240, 255, 0.35);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .admin-standalone-main {
+      flex: 1;
+      padding: 24px 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <header class="admin-standalone-header">
+    <div class="header-left">
+      <div class="logo-badge" title="RoboHead System Admin">
+        <span class="pulse-ring"></span>
+        <span class="logo-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+        </span>
+      </div>
+      <div class="title-group">
+        <h1>SYSTEM ADMIN // HARDWARE OVERRIDE COMMAND CENTER</h1>
+        <span class="sub-tag" style="font-family: var(--font-mono); font-size: 11px; color: #ff6b8b;">ROOT ACCESS // DIRECT PIN ACTUATION</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="connection-bar">
+        <div class="status-indicator" id="connIndicator">
+          <span class="status-dot"></span>
+          <span class="status-text" id="connStatusText">DISCONNECTED</span>
+        </div>
+        <button id="btnQuickConnect" class="btn btn-connect">
+          CONNECT USB
+        </button>
+        <a href="index.html" class="btn btn-back-from-admin" title="Return to 3D Cockpit">
+          ← BACK TO COCKPIT
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="admin-standalone-main">
+    <div class="admin-main-grid">
+      <!-- Left Column: Actuator Diagnostics & Live Pin Testers -->
+      <div class="admin-grid-col">
+        <div class="admin-section">
+          <div class="admin-section-head">
+            <span class="admin-sec-title">ACTUATOR DIRECT PIN DIAGNOSTICS</span>
+            <span class="admin-sec-sub">Bypass UI limits to test individual physical servo & relay lines</span>
+          </div>
+
+          <div class="admin-actuator-grid">
+            <!-- Pin 9: Tilt Servo -->
+            <div class="admin-card">
+              <div class="card-head">
+                <span class="pin-badge">PIN 9</span>
+                <span class="act-name">MAIN TILT SERVO</span>
+              </div>
+              <div class="act-details">Vertical Tilt • Soft Limits: 50° - 120°</div>
+              <div class="act-btn-row">
+                <button type="button" class="btn-admin-action" data-cmd="TILT 50">50° (UP)</button>
+                <button type="button" class="btn-admin-action" data-cmd="TILT 90">90° (HOME)</button>
+                <button type="button" class="btn-admin-action" data-cmd="TILT 120">120° (DOWN)</button>
+              </div>
+            </div>
+
+            <!-- Pin 6: Pan Servo -->
+            <div class="admin-card">
+              <div class="card-head">
+                <span class="pin-badge">PIN 6</span>
+                <span class="act-name">THIRD PAN SERVO</span>
+              </div>
+              <div class="act-details">Horizontal Yaw • Soft Limits: 50° - 140°</div>
+              <div class="act-btn-row">
+                <button type="button" class="btn-admin-action" data-cmd="LEFT">140° (LEFT)</button>
+                <button type="button" class="btn-admin-action" data-cmd="HOME">90° (HOME)</button>
+                <button type="button" class="btn-admin-action" data-cmd="RIGHT">50° (RIGHT)</button>
+              </div>
+            </div>
+
+            <!-- Pin 3: Mouth Servo -->
+            <div class="admin-card">
+              <div class="card-head">
+                <span class="pin-badge">PIN 3</span>
+                <span class="act-name">MOUTH SERVO</span>
+              </div>
+              <div class="act-details">Speech / Breath Sweep • 90° - 130°</div>
+              <div class="act-btn-row">
+                <button type="button" class="btn-admin-action" data-cmd="MOUTH ON">MOUTH OPEN</button>
+                <button type="button" class="btn-admin-action" data-cmd="MOUTH OFF">MOUTH CLOSE</button>
+              </div>
+            </div>
+
+            <!-- Pins 2 & 12: Dual Pulse Servos -->
+            <div class="admin-card">
+              <div class="card-head">
+                <span class="pin-badge">PINS 2 & 12</span>
+                <span class="act-name">HEARTBEAT PULSE SERVOS</span>
+              </div>
+              <div class="act-details">Dual SG90 Neck Rhythm • 0° - 20°</div>
+              <div class="act-btn-row">
+                <button type="button" class="btn-admin-action" data-cmd="PULSE ON">PULSE START</button>
+                <button type="button" class="btn-admin-action" data-cmd="PULSE OFF">PULSE STOP</button>
+                <button type="button" class="btn-admin-action" data-cmd="PULSE SPEED 1">HIGH</button>
+                <button type="button" class="btn-admin-action" data-cmd="PULSE SPEED 20">MED</button>
+                <button type="button" class="btn-admin-action" data-cmd="PULSE SPEED 35">LOW</button>
+              </div>
+            </div>
+
+            <!-- Pin 4: Relay Blower -->
+            <div class="admin-card">
+              <div class="card-head">
+                <span class="pin-badge">PIN 4</span>
+                <span class="act-name">AIR BLOWER RELAY</span>
+              </div>
+              <div class="act-details">Active-LOW Relay Module • Pin 4 LOW = ON</div>
+              <div class="act-btn-row">
+                <button type="button" class="btn-admin-action" data-cmd="1">BLOW ON</button>
+                <button type="button" class="btn-admin-action" data-cmd="0">BLOW OFF</button>
+                <button type="button" class="btn-admin-action" data-cmd="INTERVAL 1">STEP 1</button>
+                <button type="button" class="btn-admin-action" data-cmd="INTERVAL 2">STEP 2</button>
+                <button type="button" class="btn-admin-action" data-cmd="INTERVAL 3">STEP 3</button>
+              </div>
+            </div>
+
+            <!-- Emergency Safe Stop -->
+            <div class="admin-card estop-card">
+              <div class="card-head">
+                <span class="pin-badge badge-estop">SAFETY</span>
+                <span class="act-name">EMERGENCY STOP</span>
+              </div>
+              <div class="act-details">Instantly halt all loops, turn off relay, home all servos</div>
+              <div class="act-btn-row">
+                <button type="button" class="btn-admin-action btn-admin-estop" data-cmd="ESTOP">EMERGENCY STOP (ESTOP)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Raw Serial Terminal & Console Log -->
+      <div class="admin-grid-col" style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="admin-section">
+          <div class="admin-section-head">
+            <span class="admin-sec-title">DIRECT SERIAL PACKET TERMINAL</span>
+            <span class="admin-sec-sub">Transmit custom raw ASCII commands directly to Arduino/ESP32</span>
+          </div>
+          <div class="admin-terminal-input-bar">
+            <input type="text" id="adminCmdInput" placeholder="Type raw serial command (e.g. POS 90 90, PULSE SPEED 1, 1, 0, HOME)" class="admin-text-input" spellcheck="false">
+            <button id="btnAdminSendCmd" class="btn btn-connect">TRANSMIT</button>
+          </div>
+          <div class="admin-quick-chips">
+            <span class="chip-lbl">QUICK INJECT:</span>
+            <button type="button" class="btn-chip-inject" data-val="HOME">HOME</button>
+            <button type="button" class="btn-chip-inject" data-val="POS 90 90">POS 90 90</button>
+            <button type="button" class="btn-chip-inject" data-val="1">1 (BLOW ON)</button>
+            <button type="button" class="btn-chip-inject" data-val="0">0 (BLOW OFF)</button>
+            <button type="button" class="btn-chip-inject" data-val="MOUTH ON">MOUTH ON</button>
+            <button type="button" class="btn-chip-inject" data-val="MOUTH OFF">MOUTH OFF</button>
+            <button type="button" class="btn-chip-inject" data-val="FOOD PIPE OPEN">FOOD PIPE OPEN</button>
+            <button type="button" class="btn-chip-inject" data-val="FOOD PIPE CLOSE">FOOD PIPE CLOSE</button>
+            <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 1">PULSE SPEED 1</button>
+            <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 20">PULSE SPEED 20</button>
+            <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 35">PULSE SPEED 35</button>
+            <button type="button" class="btn-chip-inject" data-val="ESTOP">ESTOP</button>
+          </div>
+        </div>
+
+        <!-- Live Terminal Stream Output -->
+        <div class="admin-section" style="flex: 1; display: flex; flex-direction: column;">
+          <div class="admin-section-head" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
+            <div>
+              <span class="admin-sec-title">LIVE PACKET STREAM</span>
+              <div class="admin-sec-sub">Real-time ASCII transmission log</div>
+            </div>
+            <button id="btnClearLog" class="btn btn-tiny" style="padding: 2px 8px;">CLEAR</button>
+          </div>
+          <div class="terminal-body" id="terminalLog" style="height: 180px; max-height: 220px; overflow-y: auto; background: rgba(0,0,0,0.6); padding: 8px 12px; font-family: var(--font-mono); font-size: 11px; border-radius: 4px; border: 1px solid rgba(0,240,255,0.2);">
+            <div class="log-line" style="color: #64748b;">[SYSTEM] Admin Console ready. Click 'CONNECT USB' to stream packets.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer style="padding: 12px 28px; background: rgba(4, 10, 20, 0.95); border-top: 1px solid rgba(0, 240, 255, 0.25); display: flex; justify-content: space-between; align-items: center;">
+    <span class="admin-footer-hint">Tip: Double-tap header pulse ring on Mission Control anytime to open full-page admin console</span>
+    <a href="index.html" class="btn btn-connect" style="text-decoration: none;">← BACK TO COCKPIT</a>
+  </footer>
+
+  <script>
+    let serialPort = null;
+    let writer = null;
+    let isConnected = false;
+
+    const logBox = document.getElementById('terminalLog');
+    const connIndicator = document.getElementById('connIndicator');
+    const connStatusText = document.getElementById('connStatusText');
+    const btnQuickConnect = document.getElementById('btnQuickConnect');
+    const adminCmdInput = document.getElementById('adminCmdInput');
+    const btnAdminSendCmd = document.getElementById('btnAdminSendCmd');
+
+    function log(msg, type = 'info') {
+      const line = document.createElement('div');
+      const time = new Date().toLocaleTimeString();
+      let color = '#00f0ff';
+      if (type === 'tx') color = '#00ff88';
+      if (type === 'rx') color = '#38bdf8';
+      if (type === 'err') color = '#ff0055';
+      if (type === 'warn') color = '#ffb800';
+      line.style.color = color;
+      line.textContent = `[${time}] ${msg}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    async function sendCommand(cmd) {
+      if (!cmd) return;
+      const data = cmd.endsWith('\n') ? cmd : (cmd + '\n');
+      if (serialPort && serialPort.writable) {
+        try {
+          const encoder = new TextEncoder();
+          const w = serialPort.writable.getWriter();
+          await w.write(encoder.encode(data));
+          w.releaseLock();
+          log(`TX: ${data.trim()}`, 'tx');
+        } catch (e) {
+          log(`TX ERROR: ${e.message}`, 'err');
+        }
+      } else {
+        log(`TX (OFFLINE): ${data.trim()}`, 'warn');
+      }
+    }
+
+    async function connect() {
+      if (!("serial" in navigator)) {
+        alert("Web Serial API is available in Google Chrome, Microsoft Edge, and Opera.");
+        return;
+      }
+      try {
+        serialPort = await navigator.serial.requestPort();
+        await serialPort.open({ baudRate: 9600 });
+        isConnected = true;
+        connIndicator.classList.add('online');
+        connStatusText.textContent = 'CONNECTED (9600)';
+        btnQuickConnect.textContent = 'DISCONNECT';
+        log('Connected to USB Serial port (9600 Baud)', 'rx');
+
+        setTimeout(() => {
+          sendCommand('HOME\n');
+        }, 1200);
+
+        readLoop();
+      } catch (e) {
+        log(`Connection failed: ${e.message}`, 'err');
+      }
+    }
+
+    async function disconnect() {
+      if (serialPort) {
+        try {
+          await serialPort.close();
+        } catch (e) {}
+        serialPort = null;
+      }
+      isConnected = false;
+      connIndicator.classList.remove('online');
+      connStatusText.textContent = 'DISCONNECTED';
+      btnQuickConnect.textContent = 'CONNECT USB';
+      log('Disconnected from USB Serial port', 'warn');
+    }
+
+    async function readLoop() {
+      while (serialPort && serialPort.readable && isConnected) {
+        try {
+          const textDecoder = new TextDecoderStream();
+          const readableStreamClosed = serialPort.readable.pipeTo(textDecoder.writable);
+          const reader = textDecoder.readable.getReader();
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value && value.trim()) {
+              log(`RX: ${value.trim()}`, 'rx');
+            }
+          }
+        } catch (e) {
+          break;
+        }
+      }
+    }
+
+    btnQuickConnect.addEventListener('click', () => {
+      if (isConnected) disconnect();
+      else connect();
+    });
+
+    document.querySelectorAll('.btn-admin-action').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cmd = btn.dataset.cmd;
+        if (cmd) sendCommand(cmd);
+      });
+    });
+
+    document.querySelectorAll('.btn-chip-inject').forEach(chip => {
+      chip.addEventListener('click', () => {
+        adminCmdInput.value = chip.dataset.val;
+        adminCmdInput.focus();
+      });
+    });
+
+    const sendRaw = () => {
+      const val = adminCmdInput.value.trim();
+      if (!val) return;
+      sendCommand(val);
+      adminCmdInput.value = '';
+    };
+
+    btnAdminSendCmd.addEventListener('click', sendRaw);
+    adminCmdInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendRaw();
+    });
+
+    document.getElementById('btnClearLog').addEventListener('click', () => {
+      logBox.innerHTML = '';
+    });
+  </script>
+</body>
+</html>
+

@@ -1,6 +1,6 @@
 /*
   =============================================================================
-  RoboHead - 5-Servo Robot Controller Firmware
+  RoboHead - 5-Servo + Active-LOW Relay Blower Controller Firmware
   =============================================================================
   Hardware Pin Assignments:
     - Pin 9  : Main Servo    (Tilt Up / Down)
@@ -8,7 +8,7 @@
     - Pin 6  : Third Servo   (Pan Left / Right / Home)
     - Pin 2  : Pulse Servo 1 (Heartbeat Pulse SG90)
     - Pin 12 : Pulse Servo 2 (Heartbeat Pulse SG90)
-    - Pin 4  : Relay Blower  (Air Blower / Breath Motor)
+    - Pin 4  : Relay Blower  (Active LOW Relay - Air Blower / Breath Motor)
 
   Baud Rate: 9600 Baud (Works with Web Serial UI & Serial Monitor)
 
@@ -24,8 +24,10 @@
     - PULSE OFF             -> Two SG90 pulse servos stop
     - TILT <angle>          -> Direct positioning of Main Servo (0-180 deg)
     - PAN <angle>           -> Direct positioning of Third Servo (0-180 deg)
-    - 1 / BLOW ON / BLOW    -> Blower Relay ON (Pin 4 HIGH), mouth sweep & wind pulse
-    - 0 / BLOW OFF          -> Blower Relay OFF (Pin 4 LOW), stops mouth & pulse
+    - POS <pan> <tilt>      -> Direct simultaneous positioning of Pan & Tilt
+    - 1 / BLOW ON / BLOW    -> Starts Relay Blinking Cycle (Active LOW, Pin 4 LOW = ON)
+    - 0 / BLOW OFF          -> Stops Relay Blinking & turns Relay OFF (Pin 4 HIGH = OFF)
+    - INTERVAL <sec>        -> Set Blow On/Off Cycle duration in seconds (e.g. INTERVAL 2, INTERVAL 3)
     - ESTOP                 -> Emergency stop all active loops & return home
   =============================================================================
 */
@@ -43,18 +45,40 @@ Servo thirdServo;
 Servo pulseServo1;
 Servo pulseServo2;
 
+// =====================================
+// RELAY (PIN 4 - ACTIVE LOW MODULE)
+// =====================================
+const int relayPin = 4;
+
+// Active LOW relay module definition
+const int RELAY_ON = LOW;
+const int RELAY_OFF = HIGH;
+
+// RELAY BLINK / CYCLE CONTROL
+bool relayBlinkActive = false;
+bool relayState = false;
+
+unsigned long relayTimer = 0;
+unsigned long relayInterval = 2000;   // Default 2000 ms (2.0s)
+unsigned long relayOnTime = 2000;     // Configurable ON duration
+unsigned long relayOffTime = 2000;    // Configurable OFF duration
+
+// =====================================
 // MAIN SERVO (Pin 9 - Tilt Up / Down)
+// =====================================
 int mainAngle = 90;
 int mainTarget = 90;
 
-const int MAIN_UP = 140;
-const int MAIN_DOWN = 65;
+const int MAIN_UP = 50;
+const int MAIN_DOWN = 120;
 const int MAIN_HOME = 90;
 
 unsigned long mainTimer = 0;
 const int mainSpeed = 15;
 
+// =====================================
 // MOUTH SERVO (Pin 3 - Mouth Actuator)
+// =====================================
 int mouthAngle = 90;
 int mouthDirection = 1;
 
@@ -66,7 +90,14 @@ const int mouthSpeed = 15;
 
 bool mouthActive = false;
 
+// =====================================
+// FOOD PIPE ACTUATOR
+// =====================================
+bool foodPipeOpen = false;
+
+// =====================================
 // THIRD SERVO (Pin 6 - Pan Left / Right)
+// =====================================
 int thirdAngle = 90;
 int thirdTarget = 90;
 
@@ -77,24 +108,22 @@ const int THIRD_HOME = 90;
 unsigned long thirdTimer = 0;
 const int thirdSpeed = 15;
 
+// =====================================
 // PULSE SERVOS (SG90 - Pin 2 & Pin 12)
+// =====================================
 int pulseAngle = 0;
 
 const int PULSE_MIN = 0;
 const int PULSE_MAX = 20;
 
-const int heartbeatSpeed = 10;
+// Adjustable pulse speed (1: HIGH, 20: MEDIUM, 35: LOW)
+int heartbeatSpeed = 20;
 const int holdTime = 100;
 const int pauseTime = 300;
 
 bool pulseActive = false;
 int pulsePhase = 0;
 unsigned long pulseTimer = 0;
-
-// =====================================
-// RELAY (PIN 4 - AIR BLOWER / BREATH)
-// =====================================
-const int RELAY_PIN = 4;
 
 // SERIAL COMMAND BUFFER
 String command = "";
@@ -114,16 +143,16 @@ void setup() {
   pulseServo2.setPeriodHertz(50);
 #endif
 
+  // RELAY SETUP (Active LOW - Default OFF / HIGH)
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, RELAY_OFF);
+
   mainServo.attach(9);
   mouthServo.attach(3);
   thirdServo.attach(6);
 
   pulseServo1.attach(2);
   pulseServo2.attach(12);
-
-  // RELAY SETUP (PIN 4 - BLOWER)
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, LOW);
 
   mainServo.write(90);
   mouthServo.write(90);
@@ -137,12 +166,16 @@ void setup() {
   Serial.println("MOUTH ON / MOUTH OFF");
   Serial.println("RIGHT / LEFT / HOME");
   Serial.println("PULSE ON / PULSE OFF");
-  Serial.println("1 / BLOW ON - BLOWER ON (RELAY PIN 4)");
-  Serial.println("0 / BLOW OFF - BLOWER OFF (RELAY PIN 4)");
+  Serial.println("PULSE SPEED 1 (HIGH) / 20 (MEDIUM) / 35 (LOW)");
+  Serial.println("1 = RELAY BLINK ON");
+  Serial.println("0 = RELAY OFF");
+  Serial.println("INTERVAL <sec> = SET BLOW CYCLE SECONDS");
 }
 
 void loop() {
+  // =====================================
   // SERIAL COMMAND READING
+  // =====================================
   while (Serial.available() > 0) {
     char c = Serial.read();
 
@@ -153,13 +186,83 @@ void loop() {
       if (command.length() == 0) {
         // Empty line, ignore
       }
+      else if (command == "1" || command == "BLOW ON" || command == "BLOW" || command == "RELAY ON" || command == "BREATH ON") {
+        relayBlinkActive = true;
+        relayState = true;
+        digitalWrite(relayPin, RELAY_ON);
+        relayTimer = millis();
+
+        mouthActive = true;
+        pulseActive = true;
+        pulsePhase = 0;
+        pulseTimer = millis();
+
+        Serial.println("RELAY BLINKING STARTED");
+        Serial.println("RELAY ON");
+      }
+      else if (command == "0" || command == "BLOW OFF" || command == "RELAY OFF" || command == "BREATH OFF") {
+        relayBlinkActive = false;
+        relayState = false;
+        digitalWrite(relayPin, RELAY_OFF);
+
+        mouthActive = false;
+        foodPipeOpen = false;
+        pulseActive = false;
+        mouthServo.write(mouthAngle);
+        pulseServo1.write(0);
+        pulseServo2.write(0);
+
+        Serial.println("RELAY STOPPED - OFF");
+      }
+      else if (command.startsWith("INTERVAL ") || command.startsWith("INTERVAL:") ||
+               command.startsWith("TIME ") || command.startsWith("TIME:") ||
+               command.startsWith("BLOW_TIME ") || command.startsWith("CYCLE ")) {
+        int splitIdx = command.indexOf(' ');
+        if (splitIdx < 0) splitIdx = command.indexOf(':');
+
+        if (splitIdx > 0) {
+          float secVal = command.substring(splitIdx + 1).toFloat();
+          if (secVal > 0.05) {
+            if (secVal <= 60.0) {
+              relayInterval = (unsigned long)(secVal * 1000.0);
+            } else {
+              relayInterval = (unsigned long)secVal;
+            }
+            if (relayInterval < 100) relayInterval = 100; // 100ms safety limit
+            relayOnTime = relayInterval;
+            relayOffTime = relayInterval;
+
+            Serial.print("RELAY INTERVAL SET: ");
+            Serial.print(relayInterval / 1000.0, 1);
+            Serial.println(" SEC");
+          }
+        }
+      }
+      else if (command.startsWith("ON_TIME ")) {
+        float secVal = command.substring(8).toFloat();
+        if (secVal > 0.05) {
+          relayOnTime = (secVal <= 60.0) ? (unsigned long)(secVal * 1000.0) : (unsigned long)secVal;
+          Serial.print("RELAY ON TIME SET: ");
+          Serial.print(relayOnTime / 1000.0, 1);
+          Serial.println(" SEC");
+        }
+      }
+      else if (command.startsWith("OFF_TIME ")) {
+        float secVal = command.substring(9).toFloat();
+        if (secVal > 0.05) {
+          relayOffTime = (secVal <= 60.0) ? (unsigned long)(secVal * 1000.0) : (unsigned long)secVal;
+          Serial.print("RELAY OFF TIME SET: ");
+          Serial.print(relayOffTime / 1000.0, 1);
+          Serial.println(" SEC");
+        }
+      }
       else if (command == "UP") {
         mainTarget = MAIN_UP;
-        Serial.println("MAIN SERVO UP - 140");
+        Serial.println("MAIN SERVO UP - 50");
       }
       else if (command == "DOWN") {
         mainTarget = MAIN_DOWN;
-        Serial.println("MAIN SERVO DOWN - 65");
+        Serial.println("MAIN SERVO DOWN - 120");
       }
       else if (command == "MOUTH ON" || command == "MOUTH OPEN") {
         mouthActive = true;
@@ -169,6 +272,15 @@ void loop() {
         mouthActive = false;
         mouthServo.write(mouthAngle);
         Serial.println("MOUTH STOPPED");
+      }
+      // FOOD PIPE ACTUATOR
+      else if (command == "FOOD PIPE OPEN" || command == "FOOD PIPE ON" || command == "FOOD_PIPE OPEN" || command == "FOOD_PIPE 1" || command == "FOODPIPE OPEN" || command == "FOODPIPE ON") {
+        foodPipeOpen = true;
+        Serial.println("FOOD PIPE OPEN");
+      }
+      else if (command == "FOOD PIPE CLOSE" || command == "FOOD PIPE OFF" || command == "FOOD_PIPE CLOSE" || command == "FOOD_PIPE 0" || command == "FOODPIPE CLOSE" || command == "FOODPIPE OFF") {
+        foodPipeOpen = false;
+        Serial.println("FOOD PIPE CLOSED");
       }
       else if (command == "RIGHT") {
         thirdTarget = THIRD_RIGHT;
@@ -197,33 +309,48 @@ void loop() {
         Serial.println(pulseAngle);
       }
       // =====================================
-      // BLOWER ON (RELAY PIN 4 HIGH)
-      // COMMANDS: 1, BLOW, BLOW ON, BREATH ON
+      // PULSE SERVO SPEED CONTROL
+      // COMMANDS:
+      //   PULSE SPEED 1   -> HIGH SPEED
+      //   PULSE SPEED 20  -> MEDIUM SPEED
+      //   PULSE SPEED 35  -> LOW SPEED
       // =====================================
-      else if (command == "1" || command == "BLOW" || command == "BLOW ON" || command == "BREATH ON") {
-        digitalWrite(RELAY_PIN, HIGH);
-        mouthActive = true;
-        pulseActive = true;
-        pulsePhase = 0;
-        pulseTimer = millis();
-        Serial.println("BREATH ON - RELAY ON");
-      }
-      // =====================================
-      // BLOWER OFF (RELAY PIN 4 LOW)
-      // COMMANDS: 0, BLOW OFF, BREATH OFF
-      // =====================================
-      else if (command == "0" || command == "BLOW OFF" || command == "BREATH OFF") {
-        digitalWrite(RELAY_PIN, LOW);
-        mouthActive = false;
-        pulseActive = false;
-        mouthServo.write(mouthAngle);
-        pulseServo1.write(0);
-        pulseServo2.write(0);
-        Serial.println("BREATH OFF - RELAY OFF");
+      else if (command.startsWith("PULSE SPEED ") || command.startsWith("PULSESPEED ")) {
+        String speedArg = command.substring(command.lastIndexOf(' ') + 1);
+        speedArg.trim();
+
+        if (speedArg == "HIGH" || speedArg == "1") {
+          heartbeatSpeed = 1;
+          Serial.println("PULSE SPEED UPDATED: 1 ms (HIGH)");
+        }
+        else if (speedArg == "MEDIUM" || speedArg == "MED" || speedArg == "20") {
+          heartbeatSpeed = 20;
+          Serial.println("PULSE SPEED UPDATED: 20 ms (MEDIUM)");
+        }
+        else if (speedArg == "LOW" || speedArg == "35") {
+          heartbeatSpeed = 35;
+          Serial.println("PULSE SPEED UPDATED: 35 ms (LOW)");
+        }
+        else {
+          int newSpeed = speedArg.toInt();
+          if (newSpeed >= 1 && newSpeed <= 100) {
+            heartbeatSpeed = newSpeed;
+            Serial.print("PULSE SPEED UPDATED: ");
+            Serial.print(heartbeatSpeed);
+            Serial.println(" ms");
+          }
+          else {
+            Serial.println("INVALID SPEED! USE 1 (HIGH), 20 (MEDIUM), 35 (LOW)");
+          }
+        }
       }
       else if (command == "ESTOP") {
-        digitalWrite(RELAY_PIN, LOW);
+        relayBlinkActive = false;
+        relayState = false;
+        digitalWrite(relayPin, RELAY_OFF);
+
         mouthActive = false;
+        foodPipeOpen = false;
         pulseActive = false;
         mainTarget = MAIN_HOME;
         thirdTarget = THIRD_HOME;
@@ -274,7 +401,28 @@ void loop() {
     }
   }
 
+  // =====================================
+  // RELAY CONTINUOUS ON/OFF CYCLE
+  // =====================================
+  if (relayBlinkActive) {
+    unsigned long currentInterval = relayState ? relayOnTime : relayOffTime;
+    if (millis() - relayTimer >= currentInterval) {
+      relayTimer = millis();
+      relayState = !relayState;
+      if (relayState) {
+        digitalWrite(relayPin, RELAY_ON);
+        Serial.println("RELAY ON");
+      }
+      else {
+        digitalWrite(relayPin, RELAY_OFF);
+        Serial.println("RELAY OFF");
+      }
+    }
+  }
+
+  // =====================================
   // MAIN SERVO SMOOTH MOVEMENT
+  // =====================================
   if (millis() - mainTimer >= mainSpeed) {
     mainTimer = millis();
 
@@ -288,7 +436,9 @@ void loop() {
     }
   }
 
+  // =====================================
   // MOUTH SERVO SWEEP
+  // =====================================
   if (mouthActive && millis() - mouthTimer >= mouthSpeed) {
     mouthTimer = millis();
 
@@ -307,7 +457,9 @@ void loop() {
     mouthServo.write(mouthAngle);
   }
 
+  // =====================================
   // THIRD SERVO SMOOTH MOVEMENT
+  // =====================================
   if (millis() - thirdTimer >= thirdSpeed) {
     thirdTimer = millis();
 
@@ -321,7 +473,9 @@ void loop() {
     }
   }
 
-  // TWO SG90 PULSE SERVOS (HEARTBEAT DYNAMICS)
+  // =====================================
+  // TWO SG90 PULSE SERVOS
+  // =====================================
   if (pulseActive) {
     unsigned long currentTime = millis();
 

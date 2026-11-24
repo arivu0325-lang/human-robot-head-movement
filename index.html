@@ -21,9 +21,17 @@
     <!-- Top Status Header -->
     <header class="hud-header">
       <div class="header-left">
-        <div class="logo-badge">
-          <span class="pulse-ring"></span>
-          <span class="logo-icon">🤖</span>
+        <div class="logo-badge" id="headerLogoBadge" title="Double-tap to open Admin Panel" role="button" tabindex="0">
+          <span class="pulse-ring" id="headerPulseRing"></span>
+          <span class="logo-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="10" rx="2"></rect>
+              <circle cx="12" cy="5" r="2"></circle>
+              <path d="M12 7v4"></path>
+              <line x1="8" y1="16" x2="8" y2="16"></line>
+              <line x1="16" y1="16" x2="16" y2="16"></line>
+            </svg>
+          </span>
         </div>
         <div class="title-group">
           <h1>ROBO-HEAD // GIMBAL CONTROLLER</h1>
@@ -37,19 +45,27 @@
             <span class="status-text" id="connStatusText">DISCONNECTED</span>
           </div>
           <button id="btnQuickConnect" class="btn btn-connect">
-            <span class="btn-icon">⚡</span> CONNECT
+            CONNECT USB
           </button>
           <button id="btnHeaderMic" class="btn btn-header-mic" title="Toggle Voice Interaction (Mic)">
-            🎙️ VOICE
+            VOICE
           </button>
           <button id="btnHeaderHand" class="btn btn-header-hand" title="Open 2-Column Hand Tracking Vision Studio">
-            ✋ HAND TRACK
+            HAND TRACK
           </button>
           <button id="btnOpenLogs" class="btn btn-icon-only" title="Open Telemetry Logs">
-            📜
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+            </svg>
           </button>
           <button id="btnOpenSettings" class="btn btn-icon-only" title="Connection Settings">
-            ⚙️
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
           </button>
         </div>
       </div>
@@ -66,35 +82,31 @@
         <div class="dpad-wrapper">
           <div class="dpad-container">
             <!-- UP Button -->
-            <button id="btnUp" class="dpad-btn btn-up" data-dir="UP" title="Look Up (Arrow Up / W)">
-              <div class="key-hint">W / ↑</div>
+            <button id="btnUp" class="dpad-btn btn-up" data-dir="UP" title="Look Up">
               <svg class="dpad-arrow" viewBox="0 0 24 24"><path d="M12 4l-8 8h6v8h4v-8h6z"/></svg>
               <span class="btn-label">LOOK UP</span>
             </button>
 
             <!-- LEFT Button -->
-            <button id="btnLeft" class="dpad-btn btn-left" data-dir="LEFT" title="Look Left (Arrow Left / A)">
-              <div class="key-hint">A / ←</div>
+            <button id="btnLeft" class="dpad-btn btn-left" data-dir="LEFT" title="Look Left">
               <svg class="dpad-arrow" viewBox="0 0 24 24"><path d="M4 12l8-8v6h8v4h-8v6z"/></svg>
               <span class="btn-label">LOOK LEFT</span>
             </button>
 
             <!-- CENTER / RESET Button -->
-            <button id="btnCenter" class="dpad-btn btn-center" data-dir="CENTER" title="Center / Neutral (Space)">
+            <button id="btnCenter" class="dpad-btn btn-center" data-dir="CENTER" title="Center">
               <div class="center-cross"></div>
               <span class="btn-label">CENTER</span>
             </button>
 
             <!-- RIGHT Button -->
-            <button id="btnRight" class="dpad-btn btn-right" data-dir="RIGHT" title="Look Right (Arrow Right / D)">
-              <div class="key-hint">D / →</div>
+            <button id="btnRight" class="dpad-btn btn-right" data-dir="RIGHT" title="Look Right">
               <svg class="dpad-arrow" viewBox="0 0 24 24"><path d="M20 12l-8-8v6H4v4h8v6z"/></svg>
               <span class="btn-label">LOOK RIGHT</span>
             </button>
 
             <!-- DOWN Button -->
-            <button id="btnDown" class="dpad-btn btn-down" data-dir="DOWN" title="Look Down (Arrow Down / S)">
-              <div class="key-hint">S / ↓</div>
+            <button id="btnDown" class="dpad-btn btn-down" data-dir="DOWN" title="Look Down">
               <svg class="dpad-arrow" viewBox="0 0 24 24"><path d="M12 20l8-8h-6V4h-4v8H4z"/></svg>
               <span class="btn-label">LOOK DOWN</span>
             </button>
@@ -105,12 +117,46 @@
         <div class="action-presets">
           <span class="sub-heading">AUTONOMOUS PRESETS</span>
           <div class="preset-grid">
-            <button class="preset-btn" id="btnPatrolTilt" title="Continuous Up / Down Tilt Sweep Scan">↕️ Sweep Up/Down</button>
-            <button class="preset-btn" id="btnPatrol" title="Continuous Left / Right Pan Sweep Scan">↔️ Sweep Left/Right</button>
-            <button class="preset-btn btn-mouth-on" id="btnMouthOn" title="Open Mouth (Pin 3)">👄 MOUTH ON</button>
-            <button class="preset-btn btn-mouth-off" id="btnMouthOff" title="Close Mouth (Pin 3)">🤐 MOUTH CLOSE</button>
-            <button class="preset-btn btn-preset-center" id="btnPresetCenter">🎯 Center (Home)</button>
-            <button class="preset-btn btn-hand-preset" id="btnPresetHand" title="Open 2-Column Hand Tracking Vision Studio">✋ Hand Studio</button>
+            <button class="preset-btn btn-mouth-on" id="btnMouthOn" title="Open Mouth (Pin 3)">MOUTH OPEN</button>
+            <button class="preset-btn btn-mouth-off" id="btnMouthOff" title="Close Mouth (Pin 3)">MOUTH CLOSE</button>
+            <button class="preset-btn btn-preset-center" id="btnPresetCenter">CENTER (HOME)</button>
+            <button class="preset-btn btn-hand-preset" id="btnPresetHand" title="Open 2-Column Hand Tracking Vision Studio">HAND STUDIO</button>
+            <button class="preset-btn btn-food-pipe" id="btnFoodPipe" title="Toggle Food Pipe (Click to Open, Click again to Close)" style="grid-column: span 2;">
+              <span class="food-pipe-dot" id="foodPipeDot"></span>
+              <span id="lblFoodPipeText">FOOD PIPE: CLOSED</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Air Blower Relay Controls (Pin 4) -->
+        <div class="action-presets" style="margin-top: 12px;">
+          <span class="sub-heading">AIR BLOWER // RELAY (PIN 4)</span>
+          <div class="blow-btn-group">
+            <button id="btnBlowOn" class="btn btn-blow btn-blow-on" title="Turn Air Blow ON">
+              <span class="blow-status-dot blow-dot-on"></span>
+              <span class="btn-blow-text">BLOW ON</span>
+            </button>
+            <button id="btnBlowOff" class="btn btn-blow btn-blow-off" title="Turn Air Blow OFF">
+              <span class="blow-status-dot blow-dot-off"></span>
+              <span class="btn-blow-text">BLOW OFF</span>
+            </button>
+          </div>
+
+          <!-- Cycle Interval Preset Pills (1s, 2s, 3s, 4s, 5s) -->
+          <div class="blow-timer-card" id="blowTimerCard">
+            <div class="blow-timer-head">
+              <span class="blow-timer-label">BLOW CYCLE INTERVAL:</span>
+              <span id="lblBlowDuration" class="blow-timer-val">2.0s</span>
+            </div>
+
+            <!-- Quick Presets for 1s, 2s, 3s, 4s, 5s -->
+            <div class="blow-presets-row">
+              <button type="button" class="pill-blow-preset" data-sec="1.0" title="1 Second Cycle">1s</button>
+              <button type="button" class="pill-blow-preset active" data-sec="2.0" title="2 Seconds Cycle (Default)">2s</button>
+              <button type="button" class="pill-blow-preset" data-sec="3.0" title="3 Seconds Cycle">3s</button>
+              <button type="button" class="pill-blow-preset" data-sec="4.0" title="4 Seconds Cycle">4s</button>
+              <button type="button" class="pill-blow-preset" data-sec="5.0" title="5 Seconds Cycle">5s</button>
+            </div>
           </div>
         </div>
       </section>
@@ -132,25 +178,8 @@
               <div class="crosshair-ticks"></div>
             </div>
 
-            <div class="hud-readout top-left">
-              <div class="readout-label">YAW (PAN)</div>
-              <div class="readout-value" id="hudYaw">0.0°</div>
-            </div>
-            <div class="hud-readout top-right">
-              <div class="readout-label">PITCH (TILT)</div>
-              <div class="readout-value" id="hudPitch">0.0°</div>
-            </div>
-            <div class="hud-readout bottom-left">
-              <div class="readout-label">SERVO PAN [0-180]</div>
-              <div class="readout-value" id="servoPanVal">90°</div>
-            </div>
-            <div class="hud-readout bottom-right">
-              <div class="readout-label">SERVO TILT [0-180]</div>
-              <div class="readout-value" id="servoTiltVal">90°</div>
-            </div>
-
             <div class="interaction-hint">
-              <span>🖱️ Drag to rotate view | Click D-Pad or use WASD / Arrow keys</span>
+              <span>Drag to rotate view | Click D-Pad or use WASD / Arrow keys</span>
             </div>
           </div>
 
@@ -250,21 +279,36 @@
               <div class="pulse-orb"></div>
               <div class="pulse-label-box">
                 <span class="pulse-main-text" id="pulseToggleTitle">PULSE: OFF</span>
-                <span class="pulse-sub-text" id="pulseToggleSub">CLICK TO TURN ON</span>
               </div>
-              <span class="pulse-bolt">⚡</span>
+              <svg class="pulse-wave-svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
             </button>
 
-            <!-- Air Blow ON & OFF Buttons -->
-            <div class="blow-btn-group">
-              <button id="btnBlowOn" class="btn btn-blow btn-blow-on" title="Turn Air Blow ON (💨)">
-                <span class="btn-blow-icon">💨</span>
-                <span class="btn-blow-text">BLOW ON</span>
-              </button>
-              <button id="btnBlowOff" class="btn btn-blow btn-blow-off" title="Turn Air Blow OFF (🛑)">
-                <span class="btn-blow-icon">🛑</span>
-                <span class="btn-blow-text">BLOW OFF</span>
-              </button>
+            <!-- Pulse Speed Preset Selector (HIGH, MEDIUM, LOW) -->
+            <div class="pulse-speed-card" id="pulseSpeedCard">
+              <div class="pulse-speed-head">
+                <span class="pulse-speed-label">PULSE SPEED:</span>
+                <span id="lblPulseSpeed" class="pulse-speed-val">MEDIUM</span>
+              </div>
+              <div class="pulse-speed-presets">
+                <button type="button" class="pill-pulse-speed" data-speed="1" data-label="HIGH" title="High Speed Pulse (1ms step) - Command: PULSE SPEED 1">HIGH</button>
+                <button type="button" class="pill-pulse-speed active" data-speed="20" data-label="MEDIUM" title="Medium Speed Pulse (20ms step) - Command: PULSE SPEED 20">MEDIUM</button>
+                <button type="button" class="pill-pulse-speed" data-speed="35" data-label="LOW" title="Low Speed Pulse (35ms step) - Command: PULSE SPEED 35">LOW</button>
+              </div>
+            </div>
+
+            <!-- Lungs Step Presets (STEP 1, STEP 2, STEP 3) - In the bottom of Pulse Speed -->
+            <div class="lungs-step-card" id="lungsStepCard">
+              <div class="lungs-step-head">
+                <span class="lungs-step-label">LUNGS STEP:</span>
+                <span id="lblLungsStep" class="lungs-step-val">STEP 2</span>
+              </div>
+              <div class="lungs-step-presets">
+                <button type="button" class="pill-lungs-step" data-step="1" data-sec="1.0" title="Lungs Step 1 - Fast Breath (1s interval)">STEP 1</button>
+                <button type="button" class="pill-lungs-step active" data-step="2" data-sec="2.0" title="Lungs Step 2 - Normal Breath (2s interval)">STEP 2</button>
+                <button type="button" class="pill-lungs-step" data-step="3" data-sec="3.0" title="Lungs Step 3 - Deep Breath (3s interval)">STEP 3</button>
+              </div>
             </div>
           </div>
 
@@ -278,11 +322,10 @@
 
             <!-- Voice Recognition Microphone Bar -->
             <div class="voice-mic-bar">
-              <button class="btn-voice-mic" id="btnVoiceMic" title="Click to speak: Ask questions or say 'Turn Right', 'Turn Left', 'Look Up', 'Look Down', 'Center'">
+              <button class="btn-voice-mic" id="btnVoiceMic" title="Click to speak: Ask questions or give directional commands">
                 <div class="voice-mic-orb"></div>
                 <div class="voice-mic-info">
-                  <span class="voice-mic-title" id="voiceMicTitle">🎙️ VOICE CONTROL: OFF</span>
-                  <span class="voice-mic-sub" id="voiceMicSub">CLICK TO START LISTENING</span>
+                  <span class="voice-mic-title" id="voiceMicTitle">VOICE CONTROL: OFF</span>
                 </div>
                 <span class="voice-mic-badge" id="voiceMicBadge">MIC OFF</span>
               </button>
@@ -296,40 +339,20 @@
 
             <!-- 4 Customized Questions -->
             <div class="qa-grid">
-              <button class="qa-btn" data-qid="1" title="1) What is Robo Miracle?">
-                <span class="qa-num">01</span>
-                <div class="qa-label-wrap">
-                  <span class="qa-label">What is Robo Miracle?</span>
-                  <span class="qa-desc">Deep-Tech & AI Humanoids</span>
-                </div>
-                <span class="qa-icon">💡</span>
+              <button class="qa-btn" data-qid="1" title="What is Robo Miracle?">
+                <span class="qa-label">What is Robo Miracle?</span>
               </button>
 
-              <button class="qa-btn" data-qid="2" title="2) What is Robotics?">
-                <span class="qa-num">02</span>
-                <div class="qa-label-wrap">
-                  <span class="qa-label">What is Robotics?</span>
-                  <span class="qa-desc">Science & Automation</span>
-                </div>
-                <span class="qa-icon">⚙️</span>
+              <button class="qa-btn" data-qid="2" title="What is Robotics?">
+                <span class="qa-label">What is Robotics?</span>
               </button>
 
-              <button class="qa-btn" data-qid="3" title="3) What is your name?">
-                <span class="qa-num">03</span>
-                <div class="qa-label-wrap">
-                  <span class="qa-label">What is your name?</span>
-                  <span class="qa-desc">RoboHead Identity</span>
-                </div>
-                <span class="qa-icon">🤖</span>
+              <button class="qa-btn" data-qid="3" title="What is your name?">
+                <span class="qa-label">What is your name?</span>
               </button>
 
-              <button class="qa-btn" data-qid="4" title="4) Where is pupil located?">
-                <span class="qa-num">04</span>
-                <div class="qa-label-wrap">
-                  <span class="qa-label">Where is pupil located?</span>
-                  <span class="qa-desc">Anatomy & Vision Center</span>
-                </div>
-                <span class="qa-icon">👁️</span>
+              <button class="qa-btn" data-qid="4" title="Where is pupil located?">
+                <span class="qa-label">Where is pupil located?</span>
               </button>
             </div>
 
@@ -337,41 +360,13 @@
             <div class="qa-display-box" id="qaDisplayBox">
               <div class="qa-display-header">
                 <span class="qa-prompt-label" id="qaDisplayPrompt">SELECT A QUESTION TO HEAR ANSWER</span>
-                <button class="qa-voice-btn" id="qaVoiceBtn" title="Toggle Voice Output">🔊 VOICE ON</button>
+                <button class="qa-voice-btn" id="qaVoiceBtn" title="Toggle Voice Output">VOICE AUDIO: ON</button>
               </div>
               <div class="qa-answer-text" id="qaAnswerText">Click any question above to hear the answer.</div>
             </div>
 
-            <!-- Step Increment Selector -->
-            <div class="step-select-row" style="margin-top: 14px;">
-              <label class="section-micro-lbl">STEP INCREMENT (PER CLICK):</label>
-              <div class="pill-selector" id="stepSelector">
-                <button class="pill" data-step="1">1°</button>
-                <button class="pill active" data-step="5">5°</button>
-                <button class="pill" data-step="10">10°</button>
-                <button class="pill" data-step="15">15°</button>
-                <button class="pill" data-step="30">30°</button>
-              </div>
-            </div>
 
-            <!-- Movement Behavior Toggles -->
-            <div class="option-toggles">
-              <label class="toggle-switch">
-                <input type="checkbox" id="chkContinuous" checked>
-                <span class="toggle-slider"></span>
-                <span class="toggle-label">Hold-to-Continuous Move</span>
-              </label>
-              <label class="toggle-switch">
-                <input type="checkbox" id="chkInvertPitch">
-                <span class="toggle-slider"></span>
-                <span class="toggle-label">Invert Pitch (Up/Down)</span>
-              </label>
-              <label class="toggle-switch">
-                <input type="checkbox" id="chkInvertYaw">
-                <span class="toggle-slider"></span>
-                <span class="toggle-label">Invert Yaw (Left/Right)</span>
-              </label>
-            </div>
+
           </div>
         </div>
       </section>
@@ -392,7 +387,7 @@
               <label class="radio-card">
                 <input type="radio" name="protocolType" value="serial" checked>
                 <div class="card-content">
-                  <span class="card-title">🔌 Web Serial API (Direct USB Cable - Recommended)</span>
+                  <span class="card-title">Web Serial API (Direct USB Cable - Recommended)</span>
                   <span class="card-desc">Direct USB connection to Arduino / ESP32 COM port (9600 Baud). Matches your .ino file!</span>
                 </div>
               </label>
@@ -499,7 +494,7 @@
       </div>
     </div>
 
-    <!-- Telemetry & Logs Modal (Open via 📜 button) -->
+    <!-- Telemetry & Logs Modal -->
     <div class="modal-overlay" id="logsModal" style="display: none;">
       <div class="modal-box modal-lg">
         <div class="modal-header">
@@ -549,6 +544,179 @@
             <input type="text" id="customCmdInput" placeholder='{"cmd": "look", "pan": 90, "tilt": 90}' spellcheck="false">
             <button id="btnSendCustom" class="btn btn-send">SEND</button>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full-Page Admin Command Center (Triggered by double-tapping Header Left Pulse Ring) -->
+    <div class="modal-overlay" id="adminModal" style="display: none !important;">
+      <div class="modal-box modal-lg admin-modal-box">
+        <div class="modal-header">
+          <div class="title-with-badge">
+            <span class="admin-shield">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+              </svg>
+            </span>
+            <h2>SYSTEM ADMIN // HARDWARE OVERRIDE COMMAND CENTER</h2>
+            <span class="protocol-tag admin-badge">SUPERUSER</span>
+            <span class="admin-access-time" id="adminAccessTime">SESSION ACTIVE</span>
+          </div>
+          <div class="modal-header-actions" style="display: flex; align-items: center; gap: 10px;">
+            <button id="btnBackFromAdmin" class="btn-back-from-admin" title="Return to 3D Cockpit">
+              ← BACK TO COCKPIT
+            </button>
+            <button class="modal-close" id="btnCloseAdmin" title="Close Admin Panel">✕</button>
+          </div>
+        </div>
+
+        <div class="modal-body admin-modal-body">
+          <div class="admin-main-grid">
+            <!-- Left Column: Actuator Diagnostics & Live Pin Testers -->
+            <div class="admin-grid-col">
+              <div class="admin-section">
+                <div class="admin-section-head">
+                  <span class="admin-sec-title">ACTUATOR DIRECT PIN DIAGNOSTICS</span>
+                  <span class="admin-sec-sub">Bypass UI limits to test individual physical servo & relay lines</span>
+                </div>
+
+                <div class="admin-actuator-grid">
+                  <!-- Pin 9: Tilt Servo -->
+                  <div class="admin-card">
+                    <div class="card-head">
+                      <span class="pin-badge">PIN 9</span>
+                      <span class="act-name">MAIN TILT SERVO</span>
+                    </div>
+                    <div class="act-details">Vertical Tilt • Soft Limits: 50° - 120°</div>
+                    <div class="act-btn-row">
+                      <button type="button" class="btn-admin-action" data-cmd="TILT 50">50° (UP)</button>
+                      <button type="button" class="btn-admin-action" data-cmd="TILT 90">90° (HOME)</button>
+                      <button type="button" class="btn-admin-action" data-cmd="TILT 120">120° (DOWN)</button>
+                    </div>
+                  </div>
+
+                  <!-- Pin 6: Pan Servo -->
+                  <div class="admin-card">
+                    <div class="card-head">
+                      <span class="pin-badge">PIN 6</span>
+                      <span class="act-name">THIRD PAN SERVO</span>
+                    </div>
+                    <div class="act-details">Horizontal Yaw • Soft Limits: 50° - 140°</div>
+                    <div class="act-btn-row">
+                      <button type="button" class="btn-admin-action" data-cmd="LEFT">140° (LEFT)</button>
+                      <button type="button" class="btn-admin-action" data-cmd="HOME">90° (HOME)</button>
+                      <button type="button" class="btn-admin-action" data-cmd="RIGHT">50° (RIGHT)</button>
+                    </div>
+                  </div>
+
+                  <!-- Pin 3: Mouth Servo -->
+                  <div class="admin-card">
+                    <div class="card-head">
+                      <span class="pin-badge">PIN 3</span>
+                      <span class="act-name">MOUTH SERVO</span>
+                    </div>
+                    <div class="act-details">Speech / Breath Sweep • 90° - 130°</div>
+                    <div class="act-btn-row">
+                      <button type="button" class="btn-admin-action" data-cmd="MOUTH ON">MOUTH OPEN</button>
+                      <button type="button" class="btn-admin-action" data-cmd="MOUTH OFF">MOUTH CLOSE</button>
+                    </div>
+                  </div>
+
+                  <!-- Pins 2 & 12: Dual Pulse Servos -->
+                  <div class="admin-card">
+                    <div class="card-head">
+                      <span class="pin-badge">PINS 2 & 12</span>
+                      <span class="act-name">HEARTBEAT PULSE SERVOS</span>
+                    </div>
+                    <div class="act-details">Dual SG90 Neck Rhythm • 0° - 20°</div>
+                    <div class="act-btn-row">
+                      <button type="button" class="btn-admin-action" data-cmd="PULSE ON">PULSE START</button>
+                      <button type="button" class="btn-admin-action" data-cmd="PULSE OFF">PULSE STOP</button>
+                      <button type="button" class="btn-admin-action" data-cmd="PULSE SPEED 1">HIGH</button>
+                      <button type="button" class="btn-admin-action" data-cmd="PULSE SPEED 20">MED</button>
+                      <button type="button" class="btn-admin-action" data-cmd="PULSE SPEED 35">LOW</button>
+                    </div>
+                  </div>
+
+                  <!-- Pin 4: Relay Blower -->
+                  <div class="admin-card">
+                    <div class="card-head">
+                      <span class="pin-badge">PIN 4</span>
+                      <span class="act-name">AIR BLOWER RELAY</span>
+                    </div>
+                    <div class="act-details">Active-LOW Relay Module • Pin 4 LOW = ON</div>
+                    <div class="act-btn-row">
+                      <button type="button" class="btn-admin-action" data-cmd="1">BLOW ON</button>
+                      <button type="button" class="btn-admin-action" data-cmd="0">BLOW OFF</button>
+                      <button type="button" class="btn-admin-action" data-cmd="INTERVAL 1">STEP 1</button>
+                      <button type="button" class="btn-admin-action" data-cmd="INTERVAL 2">STEP 2</button>
+                      <button type="button" class="btn-admin-action" data-cmd="INTERVAL 3">STEP 3</button>
+                    </div>
+                  </div>
+
+                  <!-- Emergency Safe Stop -->
+                  <div class="admin-card estop-card">
+                    <div class="card-head">
+                      <span class="pin-badge badge-estop">SAFETY</span>
+                      <span class="act-name">EMERGENCY STOP</span>
+                    </div>
+                    <div class="act-details">Instantly halt all loops, turn off relay, home all servos</div>
+                    <div class="act-btn-row">
+                      <button type="button" class="btn-admin-action btn-admin-estop" data-cmd="ESTOP">EMERGENCY STOP (ESTOP)</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Column: Raw Serial Terminal & System Navigation -->
+            <div class="admin-grid-col" style="display: flex; flex-direction: column; gap: 16px;">
+              <!-- Direct Serial Packet Terminal -->
+              <div class="admin-section">
+                <div class="admin-section-head">
+                  <span class="admin-sec-title">DIRECT SERIAL PACKET TERMINAL</span>
+                  <span class="admin-sec-sub">Transmit custom raw ASCII commands directly to Arduino/ESP32</span>
+                </div>
+                <div class="admin-terminal-input-bar">
+                  <input type="text" id="adminCmdInput" placeholder="Type raw serial command (e.g. POS 90 90, PULSE SPEED 1, 1, 0, HOME)" class="admin-text-input" spellcheck="false">
+                  <button id="btnAdminSendCmd" class="btn btn-connect">TRANSMIT</button>
+                </div>
+                <div class="admin-quick-chips">
+                  <span class="chip-lbl">QUICK INJECT:</span>
+                  <button type="button" class="btn-chip-inject" data-val="HOME">HOME</button>
+                  <button type="button" class="btn-chip-inject" data-val="POS 90 90">POS 90 90</button>
+                  <button type="button" class="btn-chip-inject" data-val="1">1 (BLOWER ON)</button>
+                  <button type="button" class="btn-chip-inject" data-val="0">0 (BLOWER OFF)</button>
+                  <button type="button" class="btn-chip-inject" data-val="MOUTH ON">MOUTH ON</button>
+                  <button type="button" class="btn-chip-inject" data-val="MOUTH OFF">MOUTH OFF</button>
+                  <button type="button" class="btn-chip-inject" data-val="FOOD PIPE OPEN">FOOD PIPE OPEN</button>
+                  <button type="button" class="btn-chip-inject" data-val="FOOD PIPE CLOSE">FOOD PIPE CLOSE</button>
+                  <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 1">PULSE SPEED 1</button>
+                  <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 20">PULSE SPEED 20</button>
+                  <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 35">PULSE SPEED 35</button>
+                  <button type="button" class="btn-chip-inject" data-val="ESTOP">ESTOP</button>
+                </div>
+              </div>
+
+              <!-- Quick Navigation & Diagnostic Modals -->
+              <div class="admin-section">
+                <div class="admin-section-head">
+                  <span class="admin-sec-title">SYSTEM DIAGNOSTICS & HARDWARE CONTROLS</span>
+                  <span class="admin-sec-sub">System links and multi-protocol hardware manager</span>
+                </div>
+                <div class="admin-quick-links" style="display: flex; flex-direction: column; gap: 8px;">
+                  <button id="btnAdminOpenSettings" class="btn btn-secondary" style="justify-content: flex-start; text-align: left; padding: 10px 14px;">Network & Hardware Settings (Web Serial, Baud, WebSocket, ROS)</button>
+                  <button id="btnAdminOpenLogs" class="btn btn-secondary" style="justify-content: flex-start; text-align: left; padding: 10px 14px;">Telemetry & Live Packet Transmission Stream</button>
+                  <a href="hand_track.html" class="btn btn-secondary" style="justify-content: flex-start; text-align: left; padding: 10px 14px; text-decoration: none;">Dedicated Hand Tracking Vision Studio</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding: 12px 28px; background: rgba(4, 10, 20, 0.95); border-top: 1px solid rgba(0, 240, 255, 0.25);">
+          <span class="admin-footer-hint">Tip: Double-tap header pulse ring anytime to toggle this full-page admin command center</span>
+          <button class="btn btn-connect" id="btnCloseAdminFooter">← BACK TO COCKPIT</button>
         </div>
       </div>
     </div>
