@@ -263,7 +263,7 @@ body {
 
 .hud-main {
   display: grid;
-  grid-template-columns: 310px 1fr 310px;
+  grid-template-columns: 420px 1fr 420px;
   gap: 14px;
   flex: 1;
   min-height: 0;
@@ -2291,9 +2291,16 @@ input[type="range"]::-webkit-slider-thumb {
    Responsive Adaptations
    ========================================================================== */
 
-@media (max-width: 1280px) {
+@media (max-width: 1400px) {
   .hud-main {
-    grid-template-columns: 280px 1fr 280px;
+    grid-template-columns: 360px 1fr 360px;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .hud-main {
+    grid-template-columns: 310px 1fr 310px;
     gap: 10px;
   }
 }
@@ -2759,6 +2766,29 @@ input[type="range"]::-webkit-slider-thumb {
   color: #00ffaa !important;
   box-shadow: 0 0 18px rgba(0, 255, 136, 0.6) !important;
   animation: handPulseHeader 1.2s infinite alternate;
+}
+
+.btn-header-admin {
+  background: rgba(255, 0, 128, 0.12);
+  border: 1px solid rgba(255, 0, 128, 0.4);
+  color: #ff66aa;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: var(--transition-fast);
+}
+
+.btn-header-admin:hover {
+  background: rgba(255, 0, 128, 0.25);
+  border-color: #ff007f;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(255, 0, 128, 0.45);
 }
 
 @keyframes handPulseHeader {

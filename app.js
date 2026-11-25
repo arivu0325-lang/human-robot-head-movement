@@ -753,15 +753,6 @@ function setBlowInterval(sec, notifyHardware = true) {
     localStorage.setItem('robo_blow_interval', val.toString());
   } catch {}
 
-  let stepLabel = 'STEP 2';
-  if (Math.abs(val - 1.0) < 0.1) stepLabel = 'STEP 1';
-  else if (Math.abs(val - 2.0) < 0.1) stepLabel = 'STEP 2';
-  else if (Math.abs(val - 3.0) < 0.1) stepLabel = 'STEP 3';
-  else stepLabel = `${val.toFixed(1)}s`;
-
-  if (dom.lblLungsStep) {
-    dom.lblLungsStep.textContent = stepLabel;
-  }
   if (dom.lblBlowDuration) {
     dom.lblBlowDuration.textContent = val.toFixed(1) + 's';
   }
@@ -772,19 +763,9 @@ function setBlowInterval(sec, notifyHardware = true) {
     dom.numBlowInterval.value = val;
   }
 
-  // Update preset pills active highlight (both left panel and right panel)
+  // Update preset pills active highlight for blow cycle interval
   if (dom.pillsBlowPreset) {
     dom.pillsBlowPreset.forEach(pill => {
-      const pSec = parseFloat(pill.dataset.sec);
-      if (Math.abs(pSec - val) < 0.05) {
-        pill.classList.add('active');
-      } else {
-        pill.classList.remove('active');
-      }
-    });
-  }
-  if (dom.pillsLungsStep) {
-    dom.pillsLungsStep.forEach(pill => {
       const pSec = parseFloat(pill.dataset.sec);
       if (Math.abs(pSec - val) < 0.05) {
         pill.classList.add('active');
@@ -802,6 +783,61 @@ function setBlowInterval(sec, notifyHardware = true) {
       timestamp: Date.now()
     });
     log(`[CONFIG] ⏱️ Blow cycle duration set to ${val.toFixed(1)}s`, 'info');
+  }
+}
+
+/**
+ * Sets Lung Servo (Pin 8) expansion step (STEP 1: LOW 80°, STEP 2: MED 110°, STEP 3: HIGH 150°).
+ */
+function setLungsStep(step, notifyHardware = true) {
+  let stepNum = 2;
+  let cmd = 'MEDIUM';
+  let angle = 110;
+  let label = 'STEP 2 (MED 110°)';
+
+  if (step === 1 || step === '1' || step === 'LOW' || step === 'STEP 1' || step === 'STEP1') {
+    stepNum = 1;
+    cmd = 'LOW';
+    angle = 80;
+    label = 'STEP 1 (LOW 80°)';
+  } else if (step === 3 || step === '3' || step === 'HIGH' || step === 'STEP 3' || step === 'STEP3') {
+    stepNum = 3;
+    cmd = 'HIGH';
+    angle = 150;
+    label = 'STEP 3 (HIGH 150°)';
+  } else {
+    stepNum = 2;
+    cmd = 'MEDIUM';
+    angle = 110;
+    label = 'STEP 2 (MED 110°)';
+  }
+
+  state.lungsStep = stepNum;
+
+  if (dom.lblLungsStep) {
+    dom.lblLungsStep.textContent = label;
+  }
+
+  if (dom.pillsLungsStep) {
+    dom.pillsLungsStep.forEach(pill => {
+      const pStep = parseInt(pill.dataset.step, 10);
+      pill.classList.toggle('active', pStep === stepNum);
+    });
+  }
+
+  try {
+    localStorage.setItem('robo_lung_step', cmd);
+  } catch (e) {}
+
+  if (notifyHardware) {
+    sendCommand({
+      cmd: cmd,
+      action: 'SET_LUNG_STEP',
+      angle: angle,
+      step: stepNum,
+      timestamp: Date.now()
+    });
+    log(`[LUNGS] 🫁 Lung Servo (Pin 8) set to STEP ${stepNum} - ${cmd} (${angle}°)`, 'tx');
   }
 }
 
@@ -830,6 +866,12 @@ function startBlowAction() {
   if (dom.blowCycleText) {
     dom.blowCycleText.className = 'strip-label active-on';
     dom.blowCycleText.textContent = `BLOWING (ON) - ${(state.blowInterval || 2.0).toFixed(1)}s`;
+  }
+  const blowerTag = document.getElementById('blowerStatusTag');
+  if (blowerTag) {
+    blowerTag.textContent = 'BLOWING';
+    blowerTag.style.color = '#00ff88';
+    blowerTag.style.background = 'rgba(0, 255, 136, 0.15)';
   }
 
   playBlowSound();
@@ -867,6 +909,12 @@ function stopBlowAction() {
 
   if (dom.blowRelayDot) {
     dom.blowRelayDot.className = 'strip-dot';
+  }
+  const blowerTagStop = document.getElementById('blowerStatusTag');
+  if (blowerTagStop) {
+    blowerTagStop.textContent = 'READY';
+    blowerTagStop.style.color = '#00f0ff';
+    blowerTagStop.style.background = 'rgba(0, 240, 255, 0.1)';
   }
   if (dom.blowCycleText) {
     dom.blowCycleText.className = 'strip-label';
@@ -1249,14 +1297,15 @@ if (dom.pillsBlowPreset) {
 if (dom.pillsLungsStep) {
   dom.pillsLungsStep.forEach(pill => {
     pill.addEventListener('click', () => {
-      const sec = parseFloat(pill.dataset.sec);
-      setBlowInterval(sec, true);
+      const step = parseInt(pill.dataset.step, 10);
+      setLungsStep(step, true);
     });
   });
 }
 
-// Initialize Blow Interval UI to current saved state
+// Initialize Blow Interval & Lung Step UI to saved state
 setBlowInterval(state.blowInterval || 2.0, false);
+setLungsStep(2, false);
 
 // Pulse Speed Preset Pills Handler (HIGH: 1ms, MEDIUM: 20ms, LOW: 35ms)
 if (dom.pillsPulseSpeed) {
@@ -1379,6 +1428,8 @@ async function connectSerial() {
     setTimeout(() => {
       sendSerialData('HOME\n');
       sendSerialData(`PULSE SPEED ${state.pulseSpeed || 20}\n`);
+      const lungAngle = state.lungsStep === 1 ? 80 : (state.lungsStep === 3 ? 150 : 110);
+      sendSerialData(`LUNG ${lungAngle}\n`);
     }, 1200);
 
     startSerialRead();
@@ -1616,14 +1667,15 @@ function sendCommand(payload) {
     } else if (payload.action === 'SET_PULSE_SPEED' || (payload.cmd && payload.cmd.startsWith('PULSE SPEED'))) {
       const spd = payload.speed !== undefined ? payload.speed : (state.pulseSpeed || 20);
       sendSerialData(`PULSE SPEED ${spd}\n`);
-    } else if (payload.cmd === 'BLOW' || payload.cmd === 'BLOW ON' || payload.action === 'BLOW_ON') {
-      const sec = payload.interval || state.blowInterval || 2.0;
-      sendSerialData(`INTERVAL ${sec}\n1\n`);
-    } else if (payload.cmd === 'BLOW OFF' || payload.action === 'BLOW_OFF') {
+    } else if (payload.cmd === 'BLOW' || payload.cmd === 'BLOW ON' || payload.action === 'BLOW_ON' || payload.cmd === '1') {
+      sendSerialData('1\n');
+    } else if (payload.cmd === 'BLOW OFF' || payload.action === 'BLOW_OFF' || payload.cmd === '0') {
       sendSerialData('0\n');
-      setTimeout(() => {
-        sendSerialData('MOUTH OFF\nPULSE OFF\n');
-      }, 50);
+    } else if (payload.action === 'SET_LUNG_STEP') {
+      sendSerialData(`LUNG ${payload.angle}\n`);
+      sendSerialData(`${payload.cmd}\n`);
+    } else if (payload.cmd === 'LOW' || payload.cmd === 'MEDIUM' || payload.cmd === 'HIGH' || (payload.cmd && (payload.cmd.startsWith('LUNG') || payload.cmd.startsWith('STEP')))) {
+      sendSerialData(`${payload.cmd}\n`);
     } else if (payload.action === 'SET_BLOW_INTERVAL' || (payload.cmd && payload.cmd.startsWith('INTERVAL'))) {
       const sec = payload.interval || state.blowInterval || 2.0;
       sendSerialData(`INTERVAL ${sec}\n`);
@@ -1652,6 +1704,24 @@ function sendCommand(payload) {
     } else if (payload.action === 'PAN_SLIDER' || payload.action === 'SWEEP_PAN' || payload.action === 'SHAKE') {
       sendSerialData(`PAN ${payload.pan}\n`);
     } else if (payload.raw) {
+      const rawUpper = payload.raw.trim().toUpperCase();
+      if (rawUpper === 'STEP 1' || rawUpper === 'STEP1' || rawUpper === 'STEP_1' || rawUpper === 'LUNG 1' || rawUpper === 'LUNGS 1' || rawUpper === 'LUNG STEP 1' || rawUpper === 'LOW' || rawUpper === 'LUNG LOW') {
+        setLungsStep(1, true);
+        return;
+      }
+      if (rawUpper === 'STEP 2' || rawUpper === 'STEP2' || rawUpper === 'STEP_2' || rawUpper === 'LUNG 2' || rawUpper === 'LUNGS 2' || rawUpper === 'LUNG STEP 2' || rawUpper === 'MEDIUM' || rawUpper === 'MED' || rawUpper === 'LUNG MED') {
+        setLungsStep(2, true);
+        return;
+      }
+      if (rawUpper === 'STEP 3' || rawUpper === 'STEP3' || rawUpper === 'STEP_3' || rawUpper === 'LUNG 3' || rawUpper === 'LUNGS 3' || rawUpper === 'LUNG STEP 3' || rawUpper === 'HIGH' || rawUpper === 'LUNG HIGH') {
+        setLungsStep(3, true);
+        return;
+      }
+      if (rawUpper === 'LUNG STEP' || rawUpper === 'LUNGS STEP' || rawUpper === 'LUNG STEPS' || rawUpper === 'LUNGS STEPS') {
+        const nextStep = state.lungsStep === 1 ? 2 : (state.lungsStep === 2 ? 3 : 1);
+        setLungsStep(nextStep, true);
+        return;
+      }
       sendSerialData(payload.raw.endsWith('\n') ? payload.raw : payload.raw + '\n');
     } else {
       sendSerialData(`${payload.action || payload.cmd || payload.tilt}\n`);
@@ -1811,6 +1881,15 @@ if (dom.headerLogoBadge) {
   });
 }
 
+// Header ADMIN button click listener
+const btnHeaderAdmin = document.getElementById('btnHeaderAdmin');
+if (btnHeaderAdmin) {
+  btnHeaderAdmin.addEventListener('click', (e) => {
+    e.preventDefault();
+    openAdminPanel();
+  });
+}
+
 // Close Admin Panel Buttons (Back to Cockpit / Close triggers)
 [dom.btnCloseAdmin, dom.btnCloseAdminFooter, dom.btnBackFromAdmin].forEach(btn => {
   if (btn) {
@@ -1900,7 +1979,19 @@ function sendCustomCommand() {
     const parsed = JSON.parse(text);
     sendCommand(parsed);
   } catch {
-    sendCommand({ raw: text, timestamp: Date.now() });
+    const upper = text.toUpperCase();
+    if (upper === 'STEP 1' || upper === 'STEP1' || upper === 'STEP_1' || upper === 'LUNG 1' || upper === 'LUNGS 1' || upper === 'LUNG STEP 1' || upper === 'LOW' || upper === 'LUNG LOW') {
+      setLungsStep(1, true);
+    } else if (upper === 'STEP 2' || upper === 'STEP2' || upper === 'STEP_2' || upper === 'LUNG 2' || upper === 'LUNGS 2' || upper === 'LUNG STEP 2' || upper === 'MEDIUM' || upper === 'MED' || upper === 'LUNG MED') {
+      setLungsStep(2, true);
+    } else if (upper === 'STEP 3' || upper === 'STEP3' || upper === 'STEP_3' || upper === 'LUNG 3' || upper === 'LUNGS 3' || upper === 'LUNG STEP 3' || upper === 'HIGH' || upper === 'LUNG HIGH') {
+      setLungsStep(3, true);
+    } else if (upper === 'LUNG STEP' || upper === 'LUNGS STEP' || upper === 'LUNG STEPS' || upper === 'LUNGS STEPS') {
+      const nextStep = state.lungsStep === 1 ? 2 : (state.lungsStep === 2 ? 3 : 1);
+      setLungsStep(nextStep, true);
+    } else {
+      sendCommand({ raw: text, timestamp: Date.now() });
+    }
   }
   dom.customCmdInput.value = '';
 }
@@ -2639,8 +2730,33 @@ const ROBOT_QA = [
 
 let voiceEnabled = true;
 let isAnswering = false;
+let lastQuestionAnswerTime = 0;
+let lastQuestionId = null;
+const QUESTION_DEBOUNCE_MS = 4000;
+let isVoiceSuppressed = false;
 let mouthFlapInterval = null;
 let qaTypingTimer = null;
+
+function pauseVoiceRecognitionDuringSpeech() {
+  isVoiceSuppressed = true;
+  if (recognition) {
+    try {
+      recognition.abort();
+    } catch (e) {}
+  }
+}
+
+function resumeVoiceRecognitionAfterSpeech() {
+  setTimeout(() => {
+    isVoiceSuppressed = false;
+    isAnswering = false;
+    if (isVoiceListeningActive && recognition) {
+      try {
+        recognition.start();
+      } catch (e) {}
+    }
+  }, 1200);
+}
 
 function setupQAEngine() {
   if (dom.qaVoiceBtn) {
@@ -2678,8 +2794,25 @@ function setupQAEngine() {
 }
 
 function triggerQuestion(qid) {
+  const now = performance.now();
+  // Ensure the robot answers exactly 1 time: block if already answering or cooling down
+  if (isAnswering || isVoiceSuppressed) {
+    console.log(`[QA ENGINE] Ignored triggerQuestion(${qid}): already answering.`);
+    return;
+  }
+  if (now - lastQuestionAnswerTime < QUESTION_DEBOUNCE_MS) {
+    console.log(`[QA ENGINE] Debounced triggerQuestion(${qid}): cooldown active (${Math.round(now - lastQuestionAnswerTime)}ms).`);
+    return;
+  }
+
   const item = ROBOT_QA.find(q => q.id === qid);
   if (!item) return;
+
+  // Immediately lock state and pause speech recognition so robot never listens to its own voice
+  isAnswering = true;
+  lastQuestionAnswerTime = now;
+  lastQuestionId = qid;
+  pauseVoiceRecognitionDuringSpeech();
 
   // Visual button states
   if (dom.qaButtons) {
@@ -2716,9 +2849,8 @@ function triggerQuestion(qid) {
   if (window.speechSynthesis) {
     window.speechSynthesis.cancel();
   }
-  stopMouthSpeaking();
 
-  // Speak aloud with synchronized mouth movement
+  // Speak aloud exactly once with synchronized mouth movement
   if (voiceEnabled && ('speechSynthesis' in window)) {
     speakAnswerWithMouth(item.speech || item.answer);
   } else {
@@ -2731,6 +2863,7 @@ function triggerQuestion(qid) {
         dom.qaStatusTag.classList.remove('active');
       }
       if (dom.qaButtons) dom.qaButtons.forEach(b => b.classList.remove('speaking'));
+      resumeVoiceRecognitionAfterSpeech();
     }, 2000);
   }
 }
@@ -2800,33 +2933,45 @@ function speakAnswerWithMouth(text) {
     const preferredVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('David')));
     if (preferredVoice) utterance.voice = preferredVoice;
 
+    let hasEnded = false;
+    const finish = () => {
+      if (hasEnded) return;
+      hasEnded = true;
+      stopMouthSpeaking();
+      if (dom.qaStatusTag) {
+        dom.qaStatusTag.textContent = 'READY';
+        dom.qaStatusTag.classList.remove('active');
+      }
+      if (dom.qaButtons) dom.qaButtons.forEach(b => b.classList.remove('speaking'));
+      resumeVoiceRecognitionAfterSpeech();
+    };
+
     utterance.onstart = () => {
       startMouthSpeaking();
     };
 
     utterance.onend = () => {
-      stopMouthSpeaking();
-      if (dom.qaStatusTag) {
-        dom.qaStatusTag.textContent = 'READY';
-        dom.qaStatusTag.classList.remove('active');
-      }
-      if (dom.qaButtons) dom.qaButtons.forEach(b => b.classList.remove('speaking'));
+      finish();
     };
 
     utterance.onerror = () => {
-      stopMouthSpeaking();
-      if (dom.qaStatusTag) {
-        dom.qaStatusTag.textContent = 'READY';
-        dom.qaStatusTag.classList.remove('active');
-      }
-      if (dom.qaButtons) dom.qaButtons.forEach(b => b.classList.remove('speaking'));
+      finish();
     };
+
+    // Safety watchdog: ensure state resets even if browser speech engine hangs
+    const safetyTimeout = Math.max(3500, (text.length / 10) * 1000 + 2000);
+    setTimeout(() => {
+      if (!hasEnded) finish();
+    }, safetyTimeout);
 
     window.speechSynthesis.speak(utterance);
   } catch (e) {
     console.warn('[QA SPEECH]', e);
     startMouthSpeaking();
-    setTimeout(stopMouthSpeaking, 3500);
+    setTimeout(() => {
+      stopMouthSpeaking();
+      resumeVoiceRecognitionAfterSpeech();
+    }, 3500);
   }
 }
 
@@ -2859,14 +3004,20 @@ function initVoiceRecognition() {
     };
 
     recognition.onresult = (event) => {
-      // Ignore microphone while robot is speaking or answering
-      if (isSpeakingVoice || isAnswering) return;
+      // Ignore microphone completely while robot is speaking, answering, or cooling down
+      if (isSpeakingVoice || isAnswering || isVoiceSuppressed) return;
 
-      const lastResultIndex = event.results.length - 1;
-      const transcript = event.results[lastResultIndex][0].transcript;
-      if (transcript && transcript.trim()) {
-        handleVoiceCommand(transcript.trim());
+      let finalTranscript = '';
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript;
+        }
       }
+
+      finalTranscript = finalTranscript.trim();
+      if (!finalTranscript) return;
+
+      handleVoiceCommand(finalTranscript);
     };
 
     recognition.onerror = (event) => {
@@ -2878,12 +3029,12 @@ function initVoiceRecognition() {
     };
 
     recognition.onend = () => {
-      // Automatically keep listening if user enabled voice mode
-      if (isVoiceListeningActive) {
+      // Automatically keep listening if user enabled voice mode and robot is not answering/speaking
+      if (isVoiceListeningActive && !isVoiceSuppressed && !isAnswering) {
         try {
           recognition.start();
         } catch (e) {}
-      } else {
+      } else if (!isVoiceListeningActive) {
         updateVoiceUI(false);
       }
     };
@@ -2967,36 +3118,82 @@ function speakVoiceFeedback(phrase) {
   if (!voiceEnabled || !('speechSynthesis' in window)) return;
   try {
     isSpeakingVoice = true;
+    pauseVoiceRecognitionDuringSpeech();
     const u = new SpeechSynthesisUtterance(phrase);
     u.rate = 1.05;
     u.pitch = 1.08;
-    u.onend = () => { setTimeout(() => { isSpeakingVoice = false; }, 350); };
-    u.onerror = () => { isSpeakingVoice = false; };
+    u.onend = () => {
+      setTimeout(() => {
+        isSpeakingVoice = false;
+        resumeVoiceRecognitionAfterSpeech();
+      }, 350);
+    };
+    u.onerror = () => {
+      isSpeakingVoice = false;
+      resumeVoiceRecognitionAfterSpeech();
+    };
     window.speechSynthesis.speak(u);
   } catch (e) {
     isSpeakingVoice = false;
+    resumeVoiceRecognitionAfterSpeech();
   }
 }
 
 function handleVoiceCommand(rawText) {
+  // If answering or voice is suppressed, discard any voice inputs
+  if (isAnswering || isVoiceSuppressed || (performance.now() - lastQuestionAnswerTime < QUESTION_DEBOUNCE_MS)) {
+    return;
+  }
+
   const text = rawText.trim().toLowerCase();
   showVoiceHeardBanner(rawText);
   log(`[VOICE INPUT] 🎙️ Heard: "${rawText}"`, 'tx');
 
-  // 1. Customized Questions Recognition
-  if (text.includes('miracle') || text.includes('robo miracle') || text.includes('robomiracle')) {
+  // 1. Customized Questions Recognition (Carefully guarded against robot self-talk & repeats)
+  if (
+    text.includes('robo miracle') ||
+    text.includes('robomiracle') ||
+    text.includes('what is robo') ||
+    (text.includes('miracle') && (text.includes('robo') || text.includes('what') || text.includes('tell')))
+  ) {
     triggerQuestion(1);
     return;
   }
-  if (text.includes('robotics') || text.includes('what is robotics') || text.includes('define robotics')) {
+
+  if (
+    !text.includes('indian robotics company') &&
+    (text.includes('what is robotics') ||
+     text.includes('define robotics') ||
+     text.includes('about robotics') ||
+     text.includes('meaning of robotics') ||
+     (text.includes('robotics') && (text.includes('what') || text.includes('explain') || text.includes('tell') || text.includes('is'))))
+  ) {
     triggerQuestion(2);
     return;
   }
-  if (text.includes('your name') || text.includes('who are you') || text.includes('ur name') || text.includes("what's your name") || text.includes('what is your name')) {
+
+  if (
+    !text.includes('my name is robohead') &&
+    (text.includes('your name') ||
+     text.includes('ur name') ||
+     text.includes('who are you') ||
+     text.includes("what's your name") ||
+     text.includes('what is your name') ||
+     (text.includes('name') && (text.includes('what') || text.includes('tell') || text.includes('your'))))
+  ) {
     triggerQuestion(3);
     return;
   }
-  if (text.includes('pupil') || text.includes('where is pupil') || text.includes('where does pupil') || text.includes('where pupil is located') || text.includes('eye')) {
+
+  if (
+    !text.includes('center of the eye') &&
+    (text.includes('where is pupil') ||
+     text.includes('where is the pupil') ||
+     text.includes('pupil located') ||
+     text.includes('location of pupil') ||
+     text.includes('pupil location') ||
+     (text.includes('pupil') && (text.includes('where') || text.includes('locate') || text.includes('what'))))
+  ) {
     triggerQuestion(4);
     return;
   }
@@ -3077,36 +3274,75 @@ function handleVoiceCommand(rawText) {
   }
 
   // 4. Special Actions: Lungs / Air Blower
-  if (text.includes('blow off') || text.includes('stop blow') || text.includes('lungs off') || text.includes('stop lungs')) {
+  if (text.includes('blow off') || text.includes('stop blow') || text.includes('air off') || text.includes('stop blower')) {
     stopBlowAction();
-    speakVoiceFeedback("Lungs off");
-    log('[VOICE COMMAND] Lungs turned OFF', 'rx');
+    speakVoiceFeedback("Air blower stopped");
+    log('[VOICE COMMAND] Air Blower turned OFF', 'rx');
     return;
   }
 
-  if (text.includes('lungs step 1') || text.includes('lung step 1') || text.includes('lungs 1')) {
-    setBlowInterval(1.0, true);
-    speakVoiceFeedback("Lungs step 1");
-    log('[VOICE COMMAND] Lungs set to STEP 1 (1s)', 'rx');
-    return;
-  }
-  if (text.includes('lungs step 2') || text.includes('lung step 2') || text.includes('lungs 2')) {
-    setBlowInterval(2.0, true);
-    speakVoiceFeedback("Lungs step 2");
-    log('[VOICE COMMAND] Lungs set to STEP 2 (2s)', 'rx');
-    return;
-  }
-  if (text.includes('lungs step 3') || text.includes('lung step 3') || text.includes('lungs 3')) {
-    setBlowInterval(3.0, true);
-    speakVoiceFeedback("Lungs step 3");
-    log('[VOICE COMMAND] Lungs set to STEP 3 (3s)', 'rx');
+  // Lung Step 1 (LOW - 80 deg)
+  if (
+    text.includes('step 1') || text.includes('step one') || text.includes('step1') ||
+    text.includes('lungs step 1') || text.includes('lung step 1') ||
+    text.includes('lungs step one') || text.includes('lung step one') ||
+    text.includes('lung 1') || text.includes('lungs 1') ||
+    text.includes('lung one') || text.includes('lungs one') ||
+    text.includes('lungs low') || text.includes('lung low')
+  ) {
+    setLungsStep(1, true);
+    speakVoiceFeedback("Lungs step 1 low");
+    log('[VOICE COMMAND] 🫁 Lungs set to STEP 1 (LOW 80°)', 'rx');
     return;
   }
 
-  if (text.includes('blow') || text.includes('blow on') || text.includes('blow air') || text.includes('lungs on') || text.includes('lungs') || text.includes('breathe')) {
+  // Lung Step 2 (MEDIUM - 110 deg)
+  if (
+    text.includes('step 2') || text.includes('step two') || text.includes('step2') ||
+    text.includes('lungs step 2') || text.includes('lung step 2') ||
+    text.includes('lungs step two') || text.includes('lung step two') ||
+    text.includes('lung 2') || text.includes('lungs 2') ||
+    text.includes('lung two') || text.includes('lungs two') ||
+    text.includes('lungs med') || text.includes('lung med') ||
+    text.includes('lungs medium') || text.includes('lung medium')
+  ) {
+    setLungsStep(2, true);
+    speakVoiceFeedback("Lungs step 2 medium");
+    log('[VOICE COMMAND] 🫁 Lungs set to STEP 2 (MEDIUM 110°)', 'rx');
+    return;
+  }
+
+  // Lung Step 3 (HIGH - 150 deg)
+  if (
+    text.includes('step 3') || text.includes('step three') || text.includes('step3') ||
+    text.includes('lungs step 3') || text.includes('lung step 3') ||
+    text.includes('lungs step three') || text.includes('lung step three') ||
+    text.includes('lung 3') || text.includes('lungs 3') ||
+    text.includes('lung three') || text.includes('lungs three') ||
+    text.includes('lungs high') || text.includes('lung high')
+  ) {
+    setLungsStep(3, true);
+    speakVoiceFeedback("Lungs step 3 high");
+    log('[VOICE COMMAND] 🫁 Lungs set to STEP 3 (HIGH 150°)', 'rx');
+    return;
+  }
+
+  // General Lung Step / Lung Steps cycle
+  if (
+    text.includes('lung step') || text.includes('lungs step') ||
+    text.includes('lung steps') || text.includes('lungs steps')
+  ) {
+    const nextStep = state.lungsStep === 1 ? 2 : (state.lungsStep === 2 ? 3 : 1);
+    setLungsStep(nextStep, true);
+    speakVoiceFeedback(`Lungs step ${nextStep}`);
+    log(`[VOICE COMMAND] 🫁 Lungs cycled to STEP ${nextStep}`, 'rx');
+    return;
+  }
+
+  if (text.includes('blow') || text.includes('blow on') || text.includes('blow air') || text.includes('blower on') || text.includes('start blow')) {
     startBlowAction();
-    speakVoiceFeedback("Lungs on");
-    log('[VOICE COMMAND] Lungs turned ON', 'rx');
+    speakVoiceFeedback("Air blower on");
+    log('[VOICE COMMAND] Air Blower turned ON', 'rx');
     return;
   }
 

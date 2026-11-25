@@ -149,9 +149,24 @@
               <div class="act-btn-row">
                 <button type="button" class="btn-admin-action" data-cmd="1">BLOW ON</button>
                 <button type="button" class="btn-admin-action" data-cmd="0">BLOW OFF</button>
-                <button type="button" class="btn-admin-action" data-cmd="INTERVAL 1">STEP 1</button>
-                <button type="button" class="btn-admin-action" data-cmd="INTERVAL 2">STEP 2</button>
-                <button type="button" class="btn-admin-action" data-cmd="INTERVAL 3">STEP 3</button>
+                <button type="button" class="btn-admin-action" data-cmd="INTERVAL 1">1.0s</button>
+                <button type="button" class="btn-admin-action" data-cmd="INTERVAL 2">2.0s</button>
+                <button type="button" class="btn-admin-action" data-cmd="INTERVAL 3">3.0s</button>
+              </div>
+            </div>
+
+            <!-- Pin 8: Lung Servo -->
+            <div class="admin-card">
+              <div class="card-head">
+                <span class="pin-badge">PIN 8</span>
+                <span class="act-name">LUNG SERVO</span>
+              </div>
+              <div class="act-details">Lung / Chest Sweep • 50° - 150° (Home: 60°)</div>
+              <div class="act-btn-row">
+                <button type="button" class="btn-admin-action" data-cmd="LOW">STEP 1 (80°)</button>
+                <button type="button" class="btn-admin-action" data-cmd="MEDIUM">STEP 2 (110°)</button>
+                <button type="button" class="btn-admin-action" data-cmd="HIGH">STEP 3 (150°)</button>
+                <button type="button" class="btn-admin-action" data-cmd="LUNG 60">HOME (60°)</button>
               </div>
             </div>
 
@@ -194,7 +209,44 @@
             <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 1">PULSE SPEED 1</button>
             <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 20">PULSE SPEED 20</button>
             <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 35">PULSE SPEED 35</button>
+            <button type="button" class="btn-chip-inject" data-val="LOW">STEP 1 (LOW 80°)</button>
+            <button type="button" class="btn-chip-inject" data-val="MEDIUM">STEP 2 (MED 110°)</button>
+            <button type="button" class="btn-chip-inject" data-val="HIGH">STEP 3 (HIGH 150°)</button>
+            <button type="button" class="btn-chip-inject" data-val="LUNG 60">LUNG 60 (HOME)</button>
             <button type="button" class="btn-chip-inject" data-val="ESTOP">ESTOP</button>
+          </div>
+        </div>
+
+        <!-- AI Knowledge & Customized Questions Section -->
+        <div class="admin-section">
+          <div class="admin-section-head">
+            <span class="admin-sec-title">AI KNOWLEDGE & QUESTIONS</span>
+            <span class="pulse-state-tag" id="qaStatusTag" style="color: #00f0ff; background: rgba(0, 240, 255, 0.1);">READY</span>
+          </div>
+
+          <!-- 4 Customized Questions -->
+          <div class="qa-grid">
+            <button class="qa-btn" data-qid="1" title="What is Robo Miracle?">
+              <span class="qa-label">What is Robo Miracle?</span>
+            </button>
+            <button class="qa-btn" data-qid="2" title="What is Robotics?">
+              <span class="qa-label">What is Robotics?</span>
+            </button>
+            <button class="qa-btn" data-qid="3" title="What is your name?">
+              <span class="qa-label">What is your name?</span>
+            </button>
+            <button class="qa-btn" data-qid="4" title="Where is pupil located?">
+              <span class="qa-label">Where is pupil located?</span>
+            </button>
+          </div>
+
+          <!-- Interactive Answer Screen -->
+          <div class="qa-display-box" id="qaDisplayBox" style="margin-top: 10px;">
+            <div class="qa-display-header">
+              <span class="qa-prompt-label" id="qaDisplayPrompt">SELECT A QUESTION TO HEAR ANSWER</span>
+              <button class="qa-voice-btn" id="qaVoiceBtn" title="Toggle Voice Output">VOICE AUDIO: ON</button>
+            </div>
+            <div class="qa-answer-text" id="qaAnswerText">Click any question above to hear the answer.</div>
           </div>
         </div>
 
@@ -248,19 +300,30 @@
 
     async function sendCommand(cmd) {
       if (!cmd) return;
-      const data = cmd.endsWith('\n') ? cmd : (cmd + '\n');
-      if (serialPort && serialPort.writable) {
-        try {
-          const encoder = new TextEncoder();
-          const w = serialPort.writable.getWriter();
-          await w.write(encoder.encode(data));
-          w.releaseLock();
-          log(`TX: ${data.trim()}`, 'tx');
-        } catch (e) {
-          log(`TX ERROR: ${e.message}`, 'err');
+      const upper = cmd.trim().toUpperCase();
+      let commandsToSend = [cmd.endsWith('\n') ? cmd : (cmd + '\n')];
+      if (upper === 'LOW' || upper === 'STEP 1' || upper === 'STEP1' || upper === 'LUNG 1') {
+        commandsToSend = ['LOW\n', 'LUNG 80\n'];
+      } else if (upper === 'MEDIUM' || upper === 'MED' || upper === 'STEP 2' || upper === 'STEP2' || upper === 'LUNG 2') {
+        commandsToSend = ['MEDIUM\n', 'LUNG 110\n'];
+      } else if (upper === 'HIGH' || upper === 'STEP 3' || upper === 'STEP3' || upper === 'LUNG 3') {
+        commandsToSend = ['HIGH\n', 'LUNG 150\n'];
+      }
+
+      for (const data of commandsToSend) {
+        if (serialPort && serialPort.writable) {
+          try {
+            const encoder = new TextEncoder();
+            const w = serialPort.writable.getWriter();
+            await w.write(encoder.encode(data));
+            w.releaseLock();
+            log(`TX: ${data.trim()}`, 'tx');
+          } catch (e) {
+            log(`TX ERROR: ${e.message}`, 'err');
+          }
+        } else {
+          log(`TX (OFFLINE): ${data.trim()}`, 'warn');
         }
-      } else {
-        log(`TX (OFFLINE): ${data.trim()}`, 'warn');
       }
     }
 
@@ -354,6 +417,75 @@
 
     document.getElementById('btnClearLog').addEventListener('click', () => {
       logBox.innerHTML = '';
+    });
+
+    // AI Knowledge & Speech Synthesis Engine (Single-answer guarded)
+    const QA_DATA = [
+      { id: 1, question: "What is Robo Miracle?", answer: "Robomiracle is an Indian robotics company that builds AI service robots and humanoids.", speech: "Robomiracle is an Indian robotics company that builds A I service robots and humanoids." },
+      { id: 2, question: "What is Robotics?", answer: "Robotics is the science of designing and building automated, intelligent machines.", speech: "Robotics is the science of designing and building automated, intelligent machines." },
+      { id: 3, question: "What is your name?", answer: "My name is RoboHead, your robotic assistant.", speech: "My name is RoboHead, your robotic assistant." },
+      { id: 4, question: "Where is the pupil located?", answer: "The pupil is located in the center of the eye's iris.", speech: "The pupil is located in the center of the eye's iris." }
+    ];
+
+    let voiceAudioEnabled = true;
+    let isAnswering = false;
+    let lastAnswerTime = 0;
+    const qaVoiceBtn = document.getElementById('qaVoiceBtn');
+    const qaPrompt = document.getElementById('qaDisplayPrompt');
+    const qaText = document.getElementById('qaAnswerText');
+    const qaTag = document.getElementById('qaStatusTag');
+
+    if (qaVoiceBtn) {
+      qaVoiceBtn.addEventListener('click', () => {
+        voiceAudioEnabled = !voiceAudioEnabled;
+        qaVoiceBtn.textContent = `VOICE AUDIO: ${voiceAudioEnabled ? 'ON' : 'OFF'}`;
+        if (!voiceAudioEnabled && window.speechSynthesis) window.speechSynthesis.cancel();
+      });
+    }
+
+    document.querySelectorAll('.qa-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const now = Date.now();
+        // Guard against repeated triggers while answering or cooling down
+        if (isAnswering || (now - lastAnswerTime < 3500)) return;
+
+        const qid = parseInt(btn.dataset.qid, 10);
+        const item = QA_DATA.find(q => q.id === qid);
+        if (!item) return;
+
+        isAnswering = true;
+        lastAnswerTime = now;
+
+        document.querySelectorAll('.qa-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        if (qaPrompt) qaPrompt.textContent = item.question.toUpperCase();
+        if (qaText) qaText.textContent = item.answer;
+        if (qaTag) {
+          qaTag.textContent = 'SPEAKING...';
+          qaTag.style.color = '#00ff88';
+        }
+
+        const finish = () => {
+          if (qaTag) {
+            qaTag.textContent = 'READY';
+            qaTag.style.color = '#00f0ff';
+          }
+          setTimeout(() => { isAnswering = false; }, 800);
+        };
+
+        if (voiceAudioEnabled && 'speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          const utter = new SpeechSynthesisUtterance(item.speech || item.answer);
+          utter.rate = 1.0;
+          utter.pitch = 1.05;
+          utter.onend = finish;
+          utter.onerror = finish;
+          window.speechSynthesis.speak(utter);
+        } else {
+          setTimeout(finish, 1500);
+        }
+      });
     });
   </script>
 </body>

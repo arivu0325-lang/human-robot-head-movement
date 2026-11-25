@@ -34,7 +34,7 @@
           </span>
         </div>
         <div class="title-group">
-          <h1>ROBO-HEAD // GIMBAL CONTROLLER</h1>
+          <h1>ROBO HEAD CONTROLLER</h1>
         </div>
       </div>
 
@@ -52,6 +52,9 @@
           </button>
           <button id="btnHeaderHand" class="btn btn-header-hand" title="Open 2-Column Hand Tracking Vision Studio">
             HAND TRACK
+          </button>
+          <button id="btnHeaderAdmin" class="btn btn-header-admin" title="Open System Admin & AI Commands">
+            ADMIN
           </button>
           <button id="btnOpenLogs" class="btn btn-icon-only" title="Open Telemetry Logs">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -125,38 +128,6 @@
               <span class="food-pipe-dot" id="foodPipeDot"></span>
               <span id="lblFoodPipeText">FOOD PIPE: CLOSED</span>
             </button>
-          </div>
-        </div>
-
-        <!-- Air Blower Relay Controls (Pin 4) -->
-        <div class="action-presets" style="margin-top: 12px;">
-          <span class="sub-heading">AIR BLOWER // RELAY (PIN 4)</span>
-          <div class="blow-btn-group">
-            <button id="btnBlowOn" class="btn btn-blow btn-blow-on" title="Turn Air Blow ON">
-              <span class="blow-status-dot blow-dot-on"></span>
-              <span class="btn-blow-text">BLOW ON</span>
-            </button>
-            <button id="btnBlowOff" class="btn btn-blow btn-blow-off" title="Turn Air Blow OFF">
-              <span class="blow-status-dot blow-dot-off"></span>
-              <span class="btn-blow-text">BLOW OFF</span>
-            </button>
-          </div>
-
-          <!-- Cycle Interval Preset Pills (1s, 2s, 3s, 4s, 5s) -->
-          <div class="blow-timer-card" id="blowTimerCard">
-            <div class="blow-timer-head">
-              <span class="blow-timer-label">BLOW CYCLE INTERVAL:</span>
-              <span id="lblBlowDuration" class="blow-timer-val">2.0s</span>
-            </div>
-
-            <!-- Quick Presets for 1s, 2s, 3s, 4s, 5s -->
-            <div class="blow-presets-row">
-              <button type="button" class="pill-blow-preset" data-sec="1.0" title="1 Second Cycle">1s</button>
-              <button type="button" class="pill-blow-preset active" data-sec="2.0" title="2 Seconds Cycle (Default)">2s</button>
-              <button type="button" class="pill-blow-preset" data-sec="3.0" title="3 Seconds Cycle">3s</button>
-              <button type="button" class="pill-blow-preset" data-sec="4.0" title="4 Seconds Cycle">4s</button>
-              <button type="button" class="pill-blow-preset" data-sec="5.0" title="5 Seconds Cycle">5s</button>
-            </div>
           </div>
         </div>
       </section>
@@ -261,10 +232,10 @@
         </div>
       </section>
 
-      <!-- Right Column: Speed & Pulse Control Engine -->
+      <!-- Right Column: Pulse & Air Blower Control Engine -->
       <section class="hud-panel right-panel">
         <div class="panel-header">
-          <h2>PULSE & AI Q&A</h2>
+          <h2>PULSE & AIR BLOWER</h2>
         </div>
 
         <div class="right-panel-scroll">
@@ -298,75 +269,54 @@
               </div>
             </div>
 
-            <!-- Lungs Step Presets (STEP 1, STEP 2, STEP 3) - In the bottom of Pulse Speed -->
+            <!-- Lungs Step Presets (STEP 1: LOW 80°, STEP 2: MEDIUM 110°, STEP 3: HIGH 150°) -->
             <div class="lungs-step-card" id="lungsStepCard">
               <div class="lungs-step-head">
-                <span class="lungs-step-label">LUNGS STEP:</span>
-                <span id="lblLungsStep" class="lungs-step-val">STEP 2</span>
+                <span class="lungs-step-label">LUNGS STEP (PIN 8):</span>
+                <span id="lblLungsStep" class="lungs-step-val">STEP 2 (MED 110°)</span>
               </div>
               <div class="lungs-step-presets">
-                <button type="button" class="pill-lungs-step" data-step="1" data-sec="1.0" title="Lungs Step 1 - Fast Breath (1s interval)">STEP 1</button>
-                <button type="button" class="pill-lungs-step active" data-step="2" data-sec="2.0" title="Lungs Step 2 - Normal Breath (2s interval)">STEP 2</button>
-                <button type="button" class="pill-lungs-step" data-step="3" data-sec="3.0" title="Lungs Step 3 - Deep Breath (3s interval)">STEP 3</button>
+                <button type="button" class="pill-lungs-step" data-step="1" data-cmd="LOW" data-angle="80" title="Lung Low - 80° on Pin 8 - Command: LOW">STEP 1</button>
+                <button type="button" class="pill-lungs-step active" data-step="2" data-cmd="MEDIUM" data-angle="110" title="Lung Medium - 110° on Pin 8 - Command: MEDIUM">STEP 2</button>
+                <button type="button" class="pill-lungs-step" data-step="3" data-cmd="HIGH" data-angle="150" title="Lung High - 150° on Pin 8 - Command: HIGH">STEP 3</button>
               </div>
             </div>
           </div>
 
-
-          <!-- Card 2: AI Customized Questions & Answers -->
-          <div class="control-card qa-card">
+          <!-- Card 2: Air Blower Relay Controls (Pin 4) -->
+          <div class="control-card blow-card">
             <div class="card-title-row">
-              <span class="card-sub">AI KNOWLEDGE & QUESTIONS</span>
-              <span class="pulse-state-tag" id="qaStatusTag">READY</span>
+              <span class="card-sub">AIR BLOWER // RELAY (PIN 4)</span>
+              <span class="pulse-state-tag" id="blowerStatusTag" style="color: #00f0ff; background: rgba(0, 240, 255, 0.1);">READY</span>
             </div>
 
-            <!-- Voice Recognition Microphone Bar -->
-            <div class="voice-mic-bar">
-              <button class="btn-voice-mic" id="btnVoiceMic" title="Click to speak: Ask questions or give directional commands">
-                <div class="voice-mic-orb"></div>
-                <div class="voice-mic-info">
-                  <span class="voice-mic-title" id="voiceMicTitle">VOICE CONTROL: OFF</span>
-                </div>
-                <span class="voice-mic-badge" id="voiceMicBadge">MIC OFF</span>
+            <div class="blow-btn-group">
+              <button id="btnBlowOn" class="btn btn-blow btn-blow-on" title="Turn Air Blow ON">
+                <span class="blow-status-dot blow-dot-on"></span>
+                <span class="btn-blow-text">BLOW ON</span>
               </button>
-            </div>
-
-            <!-- Voice Transcript Live Readout Banner -->
-            <div class="voice-heard-banner" id="voiceHeardBanner" style="display: none;">
-              <span class="voice-heard-label">HEARD:</span>
-              <span class="voice-heard-text" id="voiceHeardText">"..."</span>
-            </div>
-
-            <!-- 4 Customized Questions -->
-            <div class="qa-grid">
-              <button class="qa-btn" data-qid="1" title="What is Robo Miracle?">
-                <span class="qa-label">What is Robo Miracle?</span>
-              </button>
-
-              <button class="qa-btn" data-qid="2" title="What is Robotics?">
-                <span class="qa-label">What is Robotics?</span>
-              </button>
-
-              <button class="qa-btn" data-qid="3" title="What is your name?">
-                <span class="qa-label">What is your name?</span>
-              </button>
-
-              <button class="qa-btn" data-qid="4" title="Where is pupil located?">
-                <span class="qa-label">Where is pupil located?</span>
+              <button id="btnBlowOff" class="btn btn-blow btn-blow-off" title="Turn Air Blow OFF">
+                <span class="blow-status-dot blow-dot-off"></span>
+                <span class="btn-blow-text">BLOW OFF</span>
               </button>
             </div>
 
-            <!-- Interactive Answer Screen -->
-            <div class="qa-display-box" id="qaDisplayBox">
-              <div class="qa-display-header">
-                <span class="qa-prompt-label" id="qaDisplayPrompt">SELECT A QUESTION TO HEAR ANSWER</span>
-                <button class="qa-voice-btn" id="qaVoiceBtn" title="Toggle Voice Output">VOICE AUDIO: ON</button>
+            <!-- Cycle Interval Preset Pills (1s, 2s, 3s, 4s, 5s) -->
+            <div class="blow-timer-card" id="blowTimerCard">
+              <div class="blow-timer-head">
+                <span class="blow-timer-label">BLOW CYCLE INTERVAL:</span>
+                <span id="lblBlowDuration" class="blow-timer-val">2.0s</span>
               </div>
-              <div class="qa-answer-text" id="qaAnswerText">Click any question above to hear the answer.</div>
+
+              <!-- Quick Presets for 1s, 2s, 3s, 4s, 5s -->
+              <div class="blow-presets-row">
+                <button type="button" class="pill-blow-preset" data-sec="1.0" title="1 Second Cycle">1s</button>
+                <button type="button" class="pill-blow-preset active" data-sec="2.0" title="2 Seconds Cycle (Default)">2s</button>
+                <button type="button" class="pill-blow-preset" data-sec="3.0" title="3 Seconds Cycle">3s</button>
+                <button type="button" class="pill-blow-preset" data-sec="4.0" title="4 Seconds Cycle">4s</button>
+                <button type="button" class="pill-blow-preset" data-sec="5.0" title="5 Seconds Cycle">5s</button>
+              </div>
             </div>
-
-
-
           </div>
         </div>
       </section>
@@ -648,9 +598,24 @@
                     <div class="act-btn-row">
                       <button type="button" class="btn-admin-action" data-cmd="1">BLOW ON</button>
                       <button type="button" class="btn-admin-action" data-cmd="0">BLOW OFF</button>
-                      <button type="button" class="btn-admin-action" data-cmd="INTERVAL 1">STEP 1</button>
-                      <button type="button" class="btn-admin-action" data-cmd="INTERVAL 2">STEP 2</button>
-                      <button type="button" class="btn-admin-action" data-cmd="INTERVAL 3">STEP 3</button>
+                      <button type="button" class="btn-admin-action" data-cmd="INTERVAL 1">1.0s</button>
+                      <button type="button" class="btn-admin-action" data-cmd="INTERVAL 2">2.0s</button>
+                      <button type="button" class="btn-admin-action" data-cmd="INTERVAL 3">3.0s</button>
+                    </div>
+                  </div>
+
+                  <!-- Pin 8: Lung Servo -->
+                  <div class="admin-card">
+                    <div class="card-head">
+                      <span class="pin-badge">PIN 8</span>
+                      <span class="act-name">LUNG SERVO</span>
+                    </div>
+                    <div class="act-details">Lung / Chest Sweep • 50° - 150° (Home: 60°)</div>
+                    <div class="act-btn-row">
+                      <button type="button" class="btn-admin-action" data-cmd="LOW">STEP 1 (80°)</button>
+                      <button type="button" class="btn-admin-action" data-cmd="MEDIUM">STEP 2 (110°)</button>
+                      <button type="button" class="btn-admin-action" data-cmd="HIGH">STEP 3 (150°)</button>
+                      <button type="button" class="btn-admin-action" data-cmd="LUNG 60">HOME (60°)</button>
                     </div>
                   </div>
 
@@ -694,7 +659,64 @@
                   <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 1">PULSE SPEED 1</button>
                   <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 20">PULSE SPEED 20</button>
                   <button type="button" class="btn-chip-inject" data-val="PULSE SPEED 35">PULSE SPEED 35</button>
+                  <button type="button" class="btn-chip-inject" data-val="LOW">STEP 1 (LOW 80°)</button>
+                  <button type="button" class="btn-chip-inject" data-val="MEDIUM">STEP 2 (MED 110°)</button>
+                  <button type="button" class="btn-chip-inject" data-val="HIGH">STEP 3 (HIGH 150°)</button>
+                  <button type="button" class="btn-chip-inject" data-val="LUNG 60">LUNG 60 (HOME)</button>
                   <button type="button" class="btn-chip-inject" data-val="ESTOP">ESTOP</button>
+                </div>
+              </div>
+
+              <!-- AI Knowledge & Assistant Commands Section -->
+              <div class="admin-section">
+                <div class="admin-section-head">
+                  <span class="admin-sec-title">AI KNOWLEDGE & QUESTIONS</span>
+                  <span class="pulse-state-tag" id="qaStatusTag">READY</span>
+                </div>
+
+                <!-- Voice Recognition Microphone Bar -->
+                <div class="voice-mic-bar">
+                  <button class="btn-voice-mic" id="btnVoiceMic" title="Click to speak: Ask questions or give directional commands">
+                    <div class="voice-mic-orb"></div>
+                    <div class="voice-mic-info">
+                      <span class="voice-mic-title" id="voiceMicTitle">VOICE CONTROL: OFF</span>
+                    </div>
+                    <span class="voice-mic-badge" id="voiceMicBadge">MIC OFF</span>
+                  </button>
+                </div>
+
+                <!-- Voice Transcript Live Readout Banner -->
+                <div class="voice-heard-banner" id="voiceHeardBanner" style="display: none;">
+                  <span class="voice-heard-label">HEARD:</span>
+                  <span class="voice-heard-text" id="voiceHeardText">"..."</span>
+                </div>
+
+                <!-- 4 Customized Questions -->
+                <div class="qa-grid">
+                  <button class="qa-btn" data-qid="1" title="What is Robo Miracle?">
+                    <span class="qa-label">What is Robo Miracle?</span>
+                  </button>
+
+                  <button class="qa-btn" data-qid="2" title="What is Robotics?">
+                    <span class="qa-label">What is Robotics?</span>
+                  </button>
+
+                  <button class="qa-btn" data-qid="3" title="What is your name?">
+                    <span class="qa-label">What is your name?</span>
+                  </button>
+
+                  <button class="qa-btn" data-qid="4" title="Where is pupil located?">
+                    <span class="qa-label">Where is pupil located?</span>
+                  </button>
+                </div>
+
+                <!-- Interactive Answer Screen -->
+                <div class="qa-display-box" id="qaDisplayBox">
+                  <div class="qa-display-header">
+                    <span class="qa-prompt-label" id="qaDisplayPrompt">SELECT A QUESTION TO HEAR ANSWER</span>
+                    <button class="qa-voice-btn" id="qaVoiceBtn" title="Toggle Voice Output">VOICE AUDIO: ON</button>
+                  </div>
+                  <div class="qa-answer-text" id="qaAnswerText">Click any question above to hear the answer.</div>
                 </div>
               </div>
 
